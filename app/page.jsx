@@ -335,6 +335,58 @@ function NetworkPointsBlock({ summary, compact = false }) {
   );
 }
 
+
+function DiscountAnalyticsBlock({ summary, compact = false }) {
+  const analytics = summary?.discountAnalytics || {};
+  const channels = analytics.channels || summary?.discountByChannels || [];
+  const days = analytics.days || summary?.discountByDays || [];
+  const riskyDays = analytics.riskyDays || summary?.discountRiskDays || [];
+  const worstChannel = analytics.worstChannel || channels[0];
+  const worstDay = analytics.worstDay || riskyDays[0] || days.slice().sort((a, b) => Number(b?.percent || 0) - Number(a?.percent || 0))[0];
+
+  if (!channels.length && !days.length) {
+    return (
+      <Section title="Скидки и потери" subtitle="контроль скидок по проценту от продаж">
+        <EmptyState title="Скидок пока нет" text="После загрузки channel_sales Lumora покажет скидки по каналам и дням." />
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Скидки и потери" subtitle="оцениваем по проценту от продаж, а не только по сумме">
+      <div className="forecast-grid">
+        <div><span>Всего скидок</span><b>{analytics.totalDiscountsText || money(0)}</b><p>{analytics.percentText || '0%'} от продаж</p></div>
+        <div><span>Главный канал</span><b>{worstChannel?.name || '—'}</b><p>{worstChannel ? `${worstChannel.percentText} · ${worstChannel.discountsText}` : '—'}</p></div>
+        <div><span>День проверки</span><b>{worstDay?.label || '—'}</b><p>{worstDay ? `${worstDay.percentText} · ${worstDay.discountsText}` : '—'}</p></div>
+      </div>
+      <p className="soft-text">{analytics.insight || 'Lumora анализирует скидки по каналам и дням.'}</p>
+
+      <div className="event-list">
+        {channels.slice(0, compact ? 3 : 5).map((item) => (
+          <div className={`channel-row ${toneClass(item.status)}`} key={`discount-channel-${item.key || item.name}`}>
+            <div><b>{item.name}</b><span>{item.statusText || 'статус'} · {item.revenueText} выручки</span></div>
+            <div><strong>{item.discountsText}</strong><em>{item.percentText}</em></div>
+          </div>
+        ))}
+      </div>
+
+      {!compact ? (
+        <>
+          <div className="event-list">
+            {days.slice(0, 7).map((item) => (
+              <div className={`channel-row ${toneClass(item.status)}`} key={`discount-day-${item.date || item.label}`}>
+                <div><b>{item.label || item.date}</b><span>{item.statusText || 'статус'} · {item.revenueText} выручки</span></div>
+                <div><strong>{item.discountsText}</strong><em>{item.percentText}</em></div>
+              </div>
+            ))}
+          </div>
+          <p className="soft-text">{analytics.advice || 'Если процент скидок выше обычного, проверьте причины скидок, смену и канал продаж.'}</p>
+        </>
+      ) : null}
+    </Section>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -377,6 +429,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       <HourlyAnalyticsBlock summary={summary} compact />
 
       <NetworkPointsBlock summary={summary} compact />
+
+      <DiscountAnalyticsBlock summary={summary} compact />
 
       <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
         {summary?.moments?.length ? (
@@ -430,6 +484,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           </div>
         )) : <EmptyState title="Каналов пока нет" text="После загрузки channel_sales появится зал, доставка и самовывоз." />}
       </Section>
+
+      <DiscountAnalyticsBlock summary={summary} />
 
       <NetworkPointsBlock summary={summary} />
 
