@@ -41,11 +41,11 @@ const TABS = [
 ];
 
 const QUICK_QUESTIONS = [
-  'Где мы теряем деньги?',
+  'Что мешает выполнить план?',
   'Что сделать сегодня?',
-  'Почему упал средний чек?',
+  'Какие скидки проверить?',
   'Какие блюда продвигать?',
-  'Кто из официантов просел?',
+  'Что видно по официантам?',
   'Сформируй план на неделю',
   'Сделай отчёт владельцу'
 ];
@@ -109,6 +109,18 @@ function periodTitle(period) {
   if (period === 'week') return 'Неделя';
   if (period === 'month') return 'Месяц';
   return 'Сегодня';
+}
+
+function planLabel(period) {
+  if (period === 'week') return 'План недели';
+  if (period === 'month') return 'План месяца';
+  return 'План дня';
+}
+
+function heroTitle(period) {
+  if (period === 'week') return 'Контроль недели';
+  if (period === 'month') return 'Контроль месяца';
+  return 'Сегодняшний контроль';
 }
 
 function toneClass(level) {
@@ -231,7 +243,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
   const guests = metricRaw(summary, 'guests');
-  const plan = activePlan(settings, 'day');
+  const plan = activePlan(settings, period);
   const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
   const visible = ['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts']
     .filter((key) => settings.visible?.[key] !== false)
@@ -241,9 +253,9 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
     <div className="screen-stack">
       <div className="hero-card">
         <div>
-          <span className="eyebrow">Сегодняшний контроль</span>
+          <span className="eyebrow">{heroTitle(period)}</span>
           <h1>{money(revenue)}</h1>
-          <p>{summary?.isEmptyPeriod ? 'Продаж за выбранный день пока нет.' : `План дня ${money(plan)} выполнен на ${planPercent}%.`}</p>
+          <p>{summary?.isEmptyPeriod ? 'Продаж за выбранный период пока нет.' : `${planLabel(period)} ${money(plan)} выполнен на ${planPercent}%.`}</p>
         </div>
         <div className="orb-progress" style={{ '--p': `${Math.min(planPercent, 100)}%` }}>
           <b>{planPercent}%</b>
@@ -261,7 +273,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
         <div className="forecast-grid">
           <div><span>Сейчас</span><b>{money(revenue)}</b></div>
           <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
-          <div><span>План</span><b>{money(plan)}</b></div>
+          <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
       </Section>
@@ -317,11 +329,11 @@ function ReportsScreen({ summary, period, setPeriod }) {
         )) : <EmptyState title="Каналов пока нет" text="После загрузки channel_sales появится зал, доставка и самовывоз." />}
       </Section>
 
-      <Section title="Категории еды" subtitle="выручка, себестоимость и маржа по категориям">
+      <Section title="Категории еды" subtitle="выручка и количество продаж по категориям">
         {categories.length ? categories.slice(0, 8).map((item) => (
           <div className="category-row" key={item.name}>
             <div><b>{item.name}</b><span>{num(item.quantity)} порций</span></div>
-            <div><strong>{item.revenueText}</strong><span>Себ.: {item.foodcostText} · Маржа: {item.marginText}</span></div>
+            <div><strong>{item.revenueText}</strong><span>{item.cost > 0 ? `Себ.: ${item.foodcostText} · Маржа: ${item.marginText}` : 'Маржа появится после подключения себестоимости'}</span></div>
           </div>
         )) : <EmptyState title="Категорий пока нет" />}
       </Section>
@@ -330,8 +342,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
         <Section title="Топ-5 блюд" subtitle="по выручке">
           {top.length ? top.slice(0, 5).map((dish, index) => <DishLine key={`${dish.name}-${index}`} dish={dish} index={index} />) : <EmptyState title="Блюд пока нет" />}
         </Section>
-        <Section title="Слабые блюда" subtitle="что стоит проверить">
-          {low.length ? low.slice(0, 5).map((dish, index) => <DishLine key={`${dish.name}-${index}`} dish={dish} index={index} weak />) : <EmptyState title="Слабых блюд нет" />}
+        <Section title="Позиции с низкой выручкой" subtitle="что стоит проверить без жёстких выводов">
+          {low.length ? low.slice(0, 5).map((dish, index) => <DishLine key={`${dish.name}-${index}`} dish={dish} index={index} weak />) : <EmptyState title="Таких позиций нет" />}
         </Section>
       </div>
     </div>
@@ -342,8 +354,8 @@ function DishLine({ dish, index, weak = false }) {
   return (
     <div className="dish-line">
       <span>{index + 1}</span>
-      <div><b>{dish.name}</b><p>{dish.category || dish.issue || 'Меню'} · {dish.amount}</p></div>
-      <strong>{weak ? dish.issue || dish.revenue : dish.revenue}</strong>
+      <div><b>{dish.name}</b><p>{weak ? `${dish.category || 'Меню'} · ${dish.amount} · ${dish.issue || 'низкая выручка за период'}` : `${dish.category || 'Меню'} · ${dish.amount}`}</p></div>
+      <strong>{dish.revenue}</strong>
     </div>
   );
 }
@@ -353,14 +365,14 @@ function WaitersScreen({ summary, period, setPeriod }) {
   return (
     <div className="screen-stack">
       <PeriodSwitch period={period} setPeriod={setPeriod} />
-      <Section title="Аналитика официантов" subtitle="выручка, чеки, средний чек и AI-советы">
+      <Section title="Выручка по официантам" subtitle="средний чек пока справочно">
         {waiters.length ? waiters.map((waiter, index) => (
           <div className="waiter-row" key={`${waiter.name}-${index}`}>
             <span className="rank">{index + 1}</span>
-            <div><b>{waiter.name}</b><p>{waiter.status} · {waiter.advice}</p></div>
+            <div><b>{waiter.name}</b><p>Выручка учтена · оценку допродаж включим после калибровки чеков</p></div>
             <div><strong>{waiter.revenue}</strong><span>{waiter.checks} чеков · {waiter.avgCheck}</span></div>
           </div>
-        )) : <EmptyState title="Официантов за период нет" text="Данные появятся после заполнения waiter_sales за выбранную дату." />}
+        )) : <EmptyState title="Официантов за период нет" text="Данные появятся после загрузки продаж за выбранную дату." />}
       </Section>
       <Section title="Совет Lumora команде" subtitle="что усилить для роста выручки">
         <div className="ai-note"><b>{summary?.teamScript || 'Скрипт появится после данных.'}</b></div>
@@ -413,7 +425,7 @@ function AiScreen({ summary, restaurantId, period, date }) {
 
   return (
     <div className="screen-stack ai-screen">
-      <Section title="Lumora AI" subtitle="задавайте вопросы по данным iiko">
+      <Section title="Lumora AI" subtitle="задавайте вопросы по данным ресторана">
         <div className="quick-grid">{QUICK_QUESTIONS.map((item) => <button key={item} onClick={() => ask(item)}>{item}</button>)}</div>
       </Section>
 
@@ -456,11 +468,12 @@ function AnalyticsScreen({ summary }) {
 
 function PlanScreen({ summary, settings }) {
   const revenue = metricRaw(summary, 'revenue');
-  const plan = activePlan(settings, summary?.period?.type || 'day');
+  const selectedPeriod = summary?.period?.type || 'day';
+  const plan = activePlan(settings, selectedPeriod);
   const percent = plan ? Math.round((revenue / plan) * 100) : 0;
   return (
     <div className="screen-stack">
-      <Section title="План на неделю" subtitle="AI-фокус на рост выручки">
+      <Section title={`План: ${periodTitle(selectedPeriod).toLowerCase()}`} subtitle="AI-фокус на рост выручки">
         <div className="plan-card">
           <span>Выполнение выбранного периода</span>
           <b>{percent}%</b>
