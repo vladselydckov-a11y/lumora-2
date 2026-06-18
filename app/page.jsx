@@ -707,24 +707,127 @@ function AnalyticsScreen({ summary }) {
   );
 }
 
+
+function buildWeeklyPlanText(summary, settings) {
+  const revenue = metricRaw(summary, 'revenue');
+  const checks = metricRaw(summary, 'checks');
+  const guests = metricRaw(summary, 'guests');
+  const avgCheck = metricRaw(summary, 'avgCheck');
+  const selectedPeriod = summary?.period?.type || 'week';
+  const plan = activePlan(settings, selectedPeriod);
+  const percent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const gap = Math.max(plan - revenue, 0);
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const worstDay = discount.worstDay || summary?.discountRiskDays?.[0] || summary?.discountByDays?.[0];
+  const topDish = summary?.topDishes?.[0];
+  const weakDish = summary?.lowDishes?.[0];
+  const bestChannel = summary?.salesChannels?.[0] || summary?.channels?.[0];
+  const periodTitleText = summary?.period?.title || 'выбранный период';
+  const forecast = summary?.forecast || {};
+
+  const lines = [
+    'План Lumora',
+    periodTitleText,
+    '',
+    `Цель: довести выручку до ${money(plan)}. Сейчас: ${money(revenue)}, выполнение ${percent}%.`,
+    gap > 0 ? `До плана осталось: ${money(gap)}.` : 'План по выручке выполнен или близок к выполнению.',
+    `Чеки: ${num(checks)}. Гости: ${num(guests)}. Средний чек: ${money(avgCheck)}.`,
+    bestChannel ? `Главный канал: ${bestChannel.name}, ${bestChannel.revenueText || money(bestChannel.revenue)}, доля ${bestChannel.share || 0}%.` : null,
+    bestHour ? `Главный пик: ${bestHour.label}, ${bestHour.revenueText || money(bestHour.revenue)}. Усилить кухню и смену вокруг этого времени.` : null,
+    discount.totalDiscountsText ? `Скидки: ${discount.totalDiscountsText}, ${discount.percentText || '0%'} от продаж. Проверить: ${worstChannel?.name || 'канал'} и ${worstDay?.label || 'день с максимумом'}.` : null,
+    topDish ? `Меню: держать в фокусе ${topDish.name}, выручка ${topDish.revenue}.` : null,
+    weakDish ? `Проверить слабую позицию: ${weakDish.name}, ${weakDish.revenue}. Без жёстких выводов до маржи.` : null,
+    '',
+    'Задачи:',
+    ...(summary?.actionPlan || []).slice(0, 6).map((item, index) => `${index + 1}. ${item.title}: ${item.text}`),
+    '',
+    'Контроль:',
+    '- Каждый день смотреть план-факт и прогноз.',
+    '- Скидки оценивать по проценту от продаж, не только по рублям.',
+    '- По официантам пока смотреть выручку, средний чек считать справочным до калибровки.',
+    '- Фудкост не оценивать до подключения себестоимости iiko.'
+  ];
+
+  if (forecast.recommendations?.length) {
+    lines.push('', 'Рекомендации Lumora:', ...forecast.recommendations.slice(0, 5).map((item) => `- ${item}`));
+  }
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function WeeklyActionPlanBlock({ summary, settings, compact = false }) {
+  const [copied, setCopied] = useState(false);
+  const revenue = metricRaw(summary, 'revenue');
+  const selectedPeriod = summary?.period?.type || 'week';
+  const plan = activePlan(settings, selectedPeriod);
+  const percent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const gap = Math.max(plan - revenue, 0);
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const actions = summary?.actionPlan || [];
+  const planText = buildWeeklyPlanText(summary, settings);
+
+  async function copyPlan() {
+    try {
+      await navigator.clipboard.writeText(planText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Section title="План действий" subtitle="что делать владельцу, управляющему и смене" action={<button onClick={copyPlan}>{copied ? 'Скопировано' : 'Скопировать план'}</button>}>
+      <div className="forecast-grid">
+        <div><span>Выполнение</span><b>{percent}%</b><p>{money(revenue)} из {money(plan)}</p></div>
+        <div><span>До плана</span><b>{money(gap)}</b><p>{gap > 0 ? 'нужно добрать' : 'цель закрыта'}</p></div>
+        <div><span>Фокус</span><b>{bestHour?.label || worstChannel?.name || 'План-факт'}</b><p>{bestHour ? `пик ${bestHour.revenueText}` : worstChannel ? `скидки ${worstChannel.percentText}` : 'контроль периода'}</p></div>
+      </div>
+
+      <div className="event-list">
+        {actions.slice(0, compact ? 3 : 6).map((item, index) => (
+          <div className="plan-row" key={`${item.title}-${index}`}>
+            <span>{index + 1}</span>
+            <div><b>{item.title}</b><p>{item.text}</p></div>
+          </div>
+        ))}
+      </div>
+
+      {!compact ? <pre className="soft-text" style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>{planText}</pre> : <p className="soft-text">{summary?.forecast?.recommendations?.[0] || 'План формируется на основе выручки, скидок, часов, блюд и рисков.'}</p>}
+    </Section>
+  );
+}
+
 function PlanScreen({ summary, settings }) {
   const revenue = metricRaw(summary, 'revenue');
   const selectedPeriod = summary?.period?.type || 'day';
   const plan = activePlan(settings, selectedPeriod);
   const percent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const gap = Math.max(plan - revenue, 0);
   return (
     <div className="screen-stack">
-      <Section title={`План: ${periodTitle(selectedPeriod).toLowerCase()}`} subtitle="AI-фокус на рост выручки">
+      <Section title={`План: ${periodTitle(selectedPeriod).toLowerCase()}`} subtitle="план-факт, прогноз и действия">
         <div className="plan-card">
           <span>Выполнение выбранного периода</span>
           <b>{percent}%</b>
-          <p>{money(revenue)} из {money(plan)}</p>
+          <p>{money(revenue)} из {money(plan)} · до плана {money(gap)}</p>
         </div>
-        {(summary?.actionPlan || []).map((item, index) => (
-          <div className="plan-row" key={`${item.title}-${index}`}>
-            <span>{index + 1}</span>
-            <div><b>{item.title}</b><p>{item.text}</p></div>
-          </div>
+        <div className="forecast-grid">
+          <div><span>Сейчас</span><b>{money(revenue)}</b><p>факт периода</p></div>
+          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
+          <div><span>Уверенность</span><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
+        </div>
+      </Section>
+
+      <WeeklyActionPlanBlock summary={summary} settings={settings} />
+
+      <Section title="Рекомендации к плану" subtitle="короткий список контроля">
+        {(summary?.forecast?.recommendations || []).slice(0, 6).map((item, index) => (
+          <div className="insight-row" key={`${item}-${index}`}><span>{index + 1}</span><p>{item}</p></div>
         ))}
       </Section>
     </div>
