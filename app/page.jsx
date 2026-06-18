@@ -239,6 +239,57 @@ function EmptyState({ title = 'Данных пока нет', text = 'Lumora ж�
   );
 }
 
+
+function HourlyAnalyticsBlock({ summary, compact = false }) {
+  const analytics = summary?.hourlyAnalytics || {};
+  const peaks = analytics.peaks || summary?.hourlyPeaks || [];
+  const weakHours = analytics.weakHours || summary?.weakHours || [];
+  const bestHour = analytics.bestHour || peaks[0];
+
+  if (!peaks.length && !weakHours.length) {
+    return (
+      <Section title="Почасовая аналитика" subtitle="пики и слабые часы продаж">
+        <EmptyState title="Почасовки пока нет" text="После загрузки hourly_sales Lumora покажет пики, слабые часы и рекомендации по смене." />
+      </Section>
+    );
+  }
+
+  return (
+    <>
+      <Section title="Пики продаж по часам" subtitle="когда ресторан зарабатывает больше всего">
+        <div className="forecast-grid">
+          <div><span>Лучший час</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
+          <div><span>Обед</span><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
+          <div><span>Вечер</span><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
+        </div>
+        <p className="soft-text">{analytics.insight || 'Lumora анализирует распределение выручки по часам.'}</p>
+        <div className="event-list">
+          {peaks.slice(0, compact ? 3 : 5).map((item) => (
+            <div className="channel-row" key={`peak-${item.hour}`}>
+              <div><b>{item.label}</b><span>{item.checks} чеков · средний {item.avgCheckText}</span></div>
+              <div><strong>{item.revenueText}</strong><em>{item.share}%</em></div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {!compact ? (
+        <Section title="Слабые часы" subtitle="где стоит проверить загрузку смены">
+          <div className="event-list">
+            {weakHours.slice(0, 5).map((item) => (
+              <div className="channel-row muted" key={`weak-${item.hour}`}>
+                <div><b>{item.label}</b><span>{item.checks} чеков · средний {item.avgCheckText}</span></div>
+                <div><strong>{item.revenueText}</strong><em>{item.share}%</em></div>
+              </div>
+            ))}
+          </div>
+          <p className="soft-text">{analytics.advice || 'Слабые часы лучше оценивать вместе с расписанием смены и временем работы кухни.'}</p>
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -277,6 +328,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
       </Section>
+
+      <HourlyAnalyticsBlock summary={summary} compact />
 
       <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
         {summary?.moments?.length ? (
@@ -319,6 +372,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           <div className="event-list">{summary.moments.map((item, index) => <div className={`event-row ${toneClass(item.level)}`} key={index}><span>✦</span><div><b>{item.title}</b><p>{item.text}</p></div></div>)}</div>
         ) : <EmptyState />}
       </Section>
+
+      <HourlyAnalyticsBlock summary={summary} />
 
       <Section title="Источники выручки" subtitle="зал, доставка, самовывоз">
         {channels.length ? channels.map((item) => (
