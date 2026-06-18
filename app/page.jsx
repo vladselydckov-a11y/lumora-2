@@ -387,6 +387,83 @@ function DiscountAnalyticsBlock({ summary, compact = false }) {
   );
 }
 
+
+function buildOwnerReport(summary) {
+  const revenue = metricRaw(summary, 'revenue');
+  const checks = metricRaw(summary, 'checks');
+  const guests = metricRaw(summary, 'guests');
+  const avgCheck = metricRaw(summary, 'avgCheck');
+  const avgGuest = metricRaw(summary, 'avgGuest');
+  const discounts = metric(summary, 'discounts');
+  const plan = Number(summary?.plan?.activeRevenue || summary?.restaurant?.plan || 0);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const avgCheckTarget = Number(summary?.plan?.avgCheck || 0);
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const bestChannel = summary?.salesChannels?.[0] || summary?.channels?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const worstDay = discount.worstDay || summary?.discountRiskDays?.[0] || summary?.discountByDays?.[0];
+  const topDish = summary?.topDishes?.[0];
+  const periodTitleText = summary?.period?.title || 'выбранный период';
+
+  const lines = [
+    `Отчёт владельцу Lumora`,
+    `${periodTitleText}`,
+    ``,
+    `1. Выручка: ${money(revenue)}. План: ${money(plan)}, выполнение ${planPercent}%.`,
+    `2. Чеки: ${num(checks)}. Гости: ${num(guests)}. Средний чек: ${money(avgCheck)}${avgCheckTarget ? ` при цели ${money(avgCheckTarget)}` : ''}. Средний чек гостя: ${money(avgGuest)}.`,
+    bestChannel ? `3. Основной канал: ${bestChannel.name}, ${bestChannel.revenueText || money(bestChannel.revenue)}, доля ${bestChannel.share || 0}%.` : null,
+    bestHour ? `4. Главный час продаж: ${bestHour.label}, ${bestHour.revenueText || money(bestHour.revenue)}.` : null,
+    discount.totalDiscountsText ? `5. Скидки: ${discount.totalDiscountsText}, ${discount.percentText || discounts?.delta || '0%'} от продаж. Канал проверки: ${worstChannel?.name || 'нет'}, день проверки: ${worstDay?.label || 'нет'}.` : `5. Скидки: ${discounts?.value || money(0)}, ${discounts?.delta || '0% от продаж'}.`,
+    topDish ? `6. Блюдо в фокусе: ${topDish.name}, ${topDish.revenue}.` : null,
+    ``,
+    `Что проверить:`,
+    planPercent < 85 ? `- План-факт: до плана не хватает ${money(Math.max(plan - revenue, 0))}.` : `- План-факт: текущий период идёт близко к цели или выше нормы.`,
+    worstChannel ? `- Скидки в канале ${worstChannel.name}: ${worstChannel.percentText || ''}, ${worstChannel.discountsText || ''}.` : null,
+    worstDay ? `- День со скидками: ${worstDay.label}, ${worstDay.percentText || ''}, ${worstDay.discountsText || ''}.` : null,
+    bestHour ? `- Смену и кухню усилить около ${bestHour.label}.` : null,
+    `- Фудкост не оценивать до подключения себестоимости iiko.`,
+    `- По официантам смотреть выручку, средний чек считать справочным до калибровки чеков.`
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function OwnerReportBlock({ summary, compact = false }) {
+  const [copied, setCopied] = useState(false);
+  const report = buildOwnerReport(summary);
+  const revenue = metricRaw(summary, 'revenue');
+  const plan = Number(summary?.plan?.activeRevenue || summary?.restaurant?.plan || 0);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstDay = discount.worstDay || summary?.discountRiskDays?.[0] || summary?.discountByDays?.[0];
+
+  async function copyReport() {
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Section title="Отчёт владельцу" subtitle="готовая выжимка для отправки" action={<button onClick={copyReport}>{copied ? 'Скопировано' : 'Скопировать отчёт'}</button>}>
+      <div className="forecast-grid">
+        <div><span>Выручка</span><b>{money(revenue)}</b><p>{planPercent}% плана</p></div>
+        <div><span>Пик продаж</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет данных'}</p></div>
+        <div><span>Скидки</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
+      </div>
+      <div className="ai-note">
+        <b>{summary?.ai?.summary || 'Lumora сформирует отчёт после загрузки данных.'}</b>
+        {!compact ? <pre className="soft-text" style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>{report}</pre> : <p>{summary?.forecast?.recommendations?.[0] || 'Проверьте план-факт, скидки и пики продаж.'}</p>}
+      </div>
+    </Section>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -432,6 +509,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <DiscountAnalyticsBlock summary={summary} compact />
 
+      <OwnerReportBlock summary={summary} compact />
+
       <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
         {summary?.moments?.length ? (
           <div className="event-list">
@@ -473,6 +552,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           <div className="event-list">{summary.moments.map((item, index) => <div className={`event-row ${toneClass(item.level)}`} key={index}><span>✦</span><div><b>{item.title}</b><p>{item.text}</p></div></div>)}</div>
         ) : <EmptyState />}
       </Section>
+
+      <OwnerReportBlock summary={summary} />
 
       <HourlyAnalyticsBlock summary={summary} />
 
