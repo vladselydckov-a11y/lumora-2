@@ -290,6 +290,51 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
   );
 }
 
+
+function NetworkPointsBlock({ summary, compact = false }) {
+  const restaurants = summary?.network?.restaurants || [];
+  const visibleRestaurants = restaurants.filter((item) => Number(item?.revenue || 0) > 0);
+  const totalRevenue = visibleRestaurants.reduce((total, item) => total + Number(item?.revenue || 0), 0);
+  const leader = [...visibleRestaurants].sort((a, b) => Number(b?.revenue || 0) - Number(a?.revenue || 0))[0];
+
+  if (!visibleRestaurants.length) {
+    return (
+      <Section title="Точки сети" subtitle="выручка по отдельным ресторанам">
+        <EmptyState title="Данных по точкам пока нет" text="После загрузки daily_sales Lumora покажет выручку и долю каждой точки." />
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Точки сети" subtitle="выручка и доля каждой точки">
+      {!compact ? (
+        <div className="forecast-grid">
+          <div><span>Сумма точек</span><b>{money(totalRevenue)}</b><p>{visibleRestaurants.length} точки</p></div>
+          <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader ? money(leader.revenue) : '—'}</p></div>
+          <div><span>Доля лидера</span><b>{totalRevenue && leader ? Math.round((Number(leader.revenue || 0) / totalRevenue) * 100) : 0}%</b><p>от выручки точек</p></div>
+        </div>
+      ) : null}
+
+      <div className="event-list">
+        {visibleRestaurants.slice(0, compact ? 2 : 6).map((item) => {
+          const revenue = Number(item?.revenue || 0);
+          const share = totalRevenue ? Math.round((revenue / totalRevenue) * 100) : 0;
+          return (
+            <div className="channel-row" key={item.id || item.name}>
+              <div>
+                <b>{item.name}</b>
+                <span>{item.status === 'good' ? 'норма' : 'фокус на выручку'} · чеки и гости по точке пока справочно</span>
+              </div>
+              <div><strong>{money(revenue)}</strong><em>{share}%</em></div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="soft-text">По точкам сейчас надёжно показываем выручку и долю. Чеки, гости и средний чек по отдельным точкам включим после калибровки.</p>
+    </Section>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -330,6 +375,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       </Section>
 
       <HourlyAnalyticsBlock summary={summary} compact />
+
+      <NetworkPointsBlock summary={summary} compact />
 
       <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
         {summary?.moments?.length ? (
@@ -383,6 +430,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           </div>
         )) : <EmptyState title="Каналов пока нет" text="После загрузки channel_sales появится зал, доставка и самовывоз." />}
       </Section>
+
+      <NetworkPointsBlock summary={summary} />
 
       <Section title="Категории еды" subtitle="выручка и количество продаж по категориям">
         {categories.length ? categories.slice(0, 8).map((item) => (
