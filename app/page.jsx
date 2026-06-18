@@ -47,7 +47,9 @@ const QUICK_QUESTIONS = [
   'Какие блюда продвигать?',
   'Что видно по официантам?',
   'Сформируй план на неделю',
-  'Сделай отчёт владельцу'
+  'Сделай отчёт владельцу',
+  'Дай скрипт для смены',
+  'Что проверить по рискам?'
 ];
 
 function getLocalDate() {
@@ -464,6 +466,183 @@ function OwnerReportBlock({ summary, compact = false }) {
   );
 }
 
+
+
+function ExecutiveFocusBlock({ summary, settings, setTab }) {
+  const revenue = metricRaw(summary, 'revenue');
+  const selectedPeriod = summary?.period?.type || 'day';
+  const plan = activePlan(settings, selectedPeriod);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const gap = Math.max(plan - revenue, 0);
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const topDish = summary?.topDishes?.[0];
+  const mainFocus = planPercent < 85
+    ? 'Добрать план-факт'
+    : discount.status === 'warn' || discount.status === 'bad'
+      ? 'Проверить скидки'
+      : bestHour
+        ? `Усилить пик ${bestHour.label}`
+        : 'Удержать темп';
+
+  return (
+    <Section title="Командный фокус" subtitle="что важно сделать сейчас" action={<button onClick={() => setTab('plan')}>к плану</button>}>
+      <div className="forecast-grid">
+        <div><span>Главный фокус</span><b>{mainFocus}</b><p>{gap > 0 ? `до плана ${money(gap)}` : 'план близко или закрыт'}</p></div>
+        <div><span>Пик смены</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет почасовки'}</p></div>
+        <div><span>Контроль скидок</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstChannel ? `${worstChannel.name}: ${worstChannel.discountsText}` : 'без явного риска'}</p></div>
+      </div>
+      <div className="event-list">
+        {(summary?.forecast?.recommendations || []).slice(0, 3).map((item, index) => (
+          <div className="insight-row" key={`focus-${index}`}><span>{index + 1}</span><p>{item}</p></div>
+        ))}
+        {topDish ? <div className="insight-row"><span>4</span><p>Меню: держать в фокусе {topDish.name}, выручка {topDish.revenue}.</p></div> : null}
+      </div>
+      <div className="quick-grid">
+        <button onClick={() => setTab('risks')}>Проверить риски</button>
+        <button onClick={() => setTab('ai')}>Спросить Lumora AI</button>
+        <button onClick={() => setTab('reports')}>Открыть отчёты</button>
+      </div>
+    </Section>
+  );
+}
+
+function buildExportPack(summary) {
+  const blocks = [
+    buildOwnerReport(summary),
+    '',
+    'Скрипт для команды:',
+    summary?.teamScript || 'Скрипт появится после данных.',
+    '',
+    buildRiskReport(summary)
+  ];
+
+  if (summary?.ai?.recommendations?.length) {
+    blocks.push('', 'Рекомендации Lumora:', ...summary.ai.recommendations.slice(0, 6).map((item, index) => `${index + 1}. ${item}`));
+  }
+
+  return blocks.filter(Boolean).join('\n');
+}
+
+function ExportPackBlock({ summary }) {
+  const [copied, setCopied] = useState(false);
+  const pack = buildExportPack(summary);
+
+  async function copyPack() {
+    try {
+      await navigator.clipboard.writeText(pack);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Section title="Пакет для владельца" subtitle="отчёт + риски + скрипт в один текст" action={<button onClick={copyPack}>{copied ? 'Скопировано' : 'Скопировать всё'}</button>}>
+      <div className="forecast-grid">
+        <div><span>Отчёт</span><b>готов</b><p>цифры и выводы</p></div>
+        <div><span>Риски</span><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
+        <div><span>Команда</span><b>скрипт</b><p>для рабочего чата</p></div>
+      </div>
+      <p className="soft-text">Один текст можно отправить владельцу, управляющему или в рабочий чат. Без технички, только управленческая выжимка.</p>
+    </Section>
+  );
+}
+
+function MenuStrategyBlock({ summary }) {
+  const [copied, setCopied] = useState(false);
+  const topDish = summary?.topDishes?.[0];
+  const weakDish = summary?.lowDishes?.[0];
+  const topCategory = summary?.categories?.[0];
+  const discount = summary?.discountAnalytics || {};
+  const text = [
+    'Меню-фокус Lumora',
+    summary?.period?.title || 'выбранный период',
+    topDish ? `1. Продвигать сильную позицию: ${topDish.name}, выручка ${topDish.revenue}.` : null,
+    topCategory ? `2. Главная категория: ${topCategory.name}, выручка ${topCategory.revenueText}.` : null,
+    weakDish ? `3. Проверить слабую позицию: ${weakDish.name}, ${weakDish.revenue}. Без жёстких выводов до подключения маржи.` : null,
+    discount.worstChannel ? `4. Следить, чтобы продвижение не разгоняло скидки в канале ${discount.worstChannel.name}.` : null,
+    '5. Фудкост и маржу не обещать до подключения себестоимости iiko.'
+  ].filter(Boolean).join('\n');
+
+  async function copyMenuFocus() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Section title="Меню-фокус" subtitle="что продвигать и что проверить" action={<button onClick={copyMenuFocus}>{copied ? 'Скопировано' : 'Скопировать меню-фокус'}</button>}>
+      <div className="forecast-grid">
+        <div><span>Продвигать</span><b>{topDish?.name || '—'}</b><p>{topDish?.revenue || 'нет данных'}</p></div>
+        <div><span>Категория</span><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
+        <div><span>Проверить</span><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
+      </div>
+      <p className="soft-text">Lumora показывает, что можно продвигать по выручке. Маржу и фудкост включаем только после подключения себестоимости.</p>
+    </Section>
+  );
+}
+
+function WaiterShiftScriptBlock({ summary }) {
+  const [copied, setCopied] = useState(false);
+  const waiters = summary?.waiters || [];
+  const leader = waiters[0];
+  const low = waiters.length ? [...waiters].sort((a, b) => Number(a.rawRevenue || 0) - Number(b.rawRevenue || 0))[0] : null;
+  const script = summary?.teamScript || 'Скрипт появится после данных.';
+  const text = [
+    'Скрипт для смены Lumora',
+    summary?.period?.title || 'выбранный период',
+    '',
+    script,
+    '',
+    leader ? `Лидер по выручке: ${leader.name}, ${leader.revenue}.` : null,
+    low ? `Зона внимания по выручке: ${low.name}, ${low.revenue}. Не делать вывод по среднему чеку до калибровки чеков.` : null,
+    'Важно: по официантам сейчас безопасно смотреть выручку; средний чек справочный.'
+  ].filter(Boolean).join('\n');
+
+  async function copyScript() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Section title="Скрипт для смены" subtitle="готовый текст для рабочего чата" action={<button onClick={copyScript}>{copied ? 'Скопировано' : 'Скопировать скрипт'}</button>}>
+      <div className="forecast-grid">
+        <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
+        <div><span>Фокус</span><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
+        <div><span>Осторожно</span><b>чеки</b><p>нужна калибровка</p></div>
+      </div>
+      <div className="ai-note"><b>{script}</b></div>
+    </Section>
+  );
+}
+
+function DataReadinessBlock({ summary }) {
+  return (
+    <Section title="Статус данных" subtitle="что уже можно показывать клиенту">
+      <div className="event-list">
+        <div className="event-row good"><span>✓</span><div><b>KPI</b><p>{summary?.dataQuality?.kpi || 'Выручка, чеки, гости и средние чеки подключены.'}</p></div></div>
+        <div className="event-row good"><span>✓</span><div><b>Каналы и скидки</b><p>{summary?.dataQuality?.discounts || 'Скидки считаются по проценту от продаж.'}</p></div></div>
+        <div className="event-row good"><span>✓</span><div><b>Почасовка</b><p>{summary?.dataQuality?.hourly || 'Пики продаж по часам подключены.'}</p></div></div>
+        <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{summary?.dataQuality?.waiters || 'Выручка есть, средний чек справочный до калибровки.'}</p></div></div>
+        <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{summary?.dataQuality?.restaurants || 'Выручка по точкам есть, чеки и гости требуют калибровки.'}</p></div></div>
+        <div className="event-row neutral"><span>•</span><div><b>Фудкост</b><p>{summary?.dataQuality?.foodcost || 'Себестоимость нужно подключить отдельным этапом.'}</p></div></div>
+      </div>
+    </Section>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -493,6 +672,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       <div className="stat-grid">
         {visible.map((item) => <StatCard key={item?.key} item={item} trend={summary?.week} />)}
       </div>
+
+      <ExecutiveFocusBlock summary={summary} settings={settings} setTab={setTab} />
 
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
@@ -555,6 +736,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
 
       <OwnerReportBlock summary={summary} />
 
+      <ExportPackBlock summary={summary} />
+
       <HourlyAnalyticsBlock summary={summary} />
 
       <Section title="Источники выручки" subtitle="зал, доставка, самовывоз">
@@ -578,6 +761,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           </div>
         )) : <EmptyState title="Категорий пока нет" />}
       </Section>
+
+      <MenuStrategyBlock summary={summary} />
 
       <div className="two-panels">
         <Section title="Топ-5 блюд" subtitle="по выручке">
@@ -606,6 +791,7 @@ function WaitersScreen({ summary, period, setPeriod }) {
   return (
     <div className="screen-stack">
       <PeriodSwitch period={period} setPeriod={setPeriod} />
+      <WaiterShiftScriptBlock summary={summary} />
       <Section title="Выручка по официантам" subtitle="средний чек пока справочно">
         {waiters.length ? waiters.map((waiter, index) => (
           <div className="waiter-row" key={`${waiter.name}-${index}`}>
@@ -834,6 +1020,133 @@ function PlanScreen({ summary, settings }) {
   );
 }
 
+
+function riskScoreValue(summary) {
+  const risks = summary?.problems?.length ? summary.problems : summary?.moneyLosses || [];
+  const revenue = metricRaw(summary, 'revenue');
+  const plan = Number(summary?.plan?.activeRevenue || summary?.restaurant?.plan || 0);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const discountStatus = summary?.discountAnalytics?.status || metric(summary, 'discounts')?.status;
+  let score = 0;
+
+  if (planPercent < 60) score += 35;
+  else if (planPercent < 85) score += 20;
+  else if (planPercent < 100) score += 8;
+
+  risks.forEach((item) => {
+    if (item.level === 'bad' || item.level === 'Высокий') score += 24;
+    if (item.level === 'warn' || item.level === 'Средний') score += 12;
+  });
+
+  if (discountStatus === 'bad') score += 18;
+  if (discountStatus === 'warn') score += 8;
+  if (summary?.dataQuality?.foodcost?.includes('не подключено')) score += 6;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function riskLevelFromScore(score) {
+  if (score >= 70) return { level: 'bad', title: 'Высокий', text: 'нужен быстрый разбор сегодня' };
+  if (score >= 35) return { level: 'warn', title: 'Средний', text: 'есть зоны контроля' };
+  return { level: 'good', title: 'Низкий', text: 'критичных отклонений нет' };
+}
+
+function buildRiskReport(summary) {
+  const risks = summary?.problems?.length ? summary.problems : summary?.moneyLosses || [];
+  const alerts = summary?.alerts || [];
+  const score = riskScoreValue(summary);
+  const level = riskLevelFromScore(score);
+  const revenue = metricRaw(summary, 'revenue');
+  const plan = Number(summary?.plan?.activeRevenue || summary?.restaurant?.plan || 0);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const worstDay = discount.worstDay || summary?.discountRiskDays?.[0] || summary?.discountByDays?.[0];
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const periodTitleText = summary?.period?.title || 'выбранный период';
+
+  const lines = [
+    'Риски Lumora',
+    periodTitleText,
+    '',
+    `Индекс риска: ${score}/100. Уровень: ${level.title}.`,
+    `План-факт: ${money(revenue)} из ${money(plan)}, выполнение ${planPercent}%.`,
+    discount.totalDiscountsText ? `Скидки: ${discount.totalDiscountsText}, ${discount.percentText || '0%'} от продаж. Проверить: ${worstChannel?.name || 'канал'} / ${worstDay?.label || 'день'}.` : null,
+    bestHour ? `Пиковый час: ${bestHour.label}, ${bestHour.revenueText}. В это время важны кухня, заготовки и смена.` : null,
+    '',
+    'Главные риски:',
+    ...(risks.length ? risks.slice(0, 6).map((item, index) => `${index + 1}. ${item.title}: ${item.reason || item.action || item.impact || 'проверить'}`) : ['1. Критичных рисков не видно.']),
+    '',
+    'Сигналы:',
+    ...(alerts.length ? alerts.slice(0, 5).map((item) => `- ${item.title}: ${item.text}`) : ['- Сигналов пока нет.']),
+    '',
+    'Ограничения данных:',
+    '- Фудкост не оценивать до подключения себестоимости iiko.',
+    '- По официантам сейчас безопасно смотреть выручку, средний чек справочный.',
+    '- По точкам сети сейчас надёжно сравнивать выручку и долю, чеки/гости требуют калибровки.'
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function RiskDashboardBlock({ summary }) {
+  const [copied, setCopied] = useState(false);
+  const risks = summary?.problems?.length ? summary.problems : summary?.moneyLosses || [];
+  const alerts = summary?.alerts || [];
+  const score = riskScoreValue(summary);
+  const level = riskLevelFromScore(score);
+  const report = buildRiskReport(summary);
+  const mainRisk = risks.find((item) => item.level === 'bad') || risks.find((item) => item.level === 'warn') || risks[0];
+  const discount = summary?.discountAnalytics || {};
+  const worstChannel = discount.worstChannel || summary?.discountByChannels?.[0];
+  const worstDay = discount.worstDay || summary?.discountRiskDays?.[0] || summary?.discountByDays?.[0];
+
+  async function copyRiskReport() {
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <>
+      <Section title="Карта рисков" subtitle="что проверить в первую очередь" action={<button onClick={copyRiskReport}>{copied ? 'Скопировано' : 'Скопировать риски'}</button>}>
+        <div className="forecast-grid">
+          <div><span>Индекс риска</span><b>{score}/100</b><p>{level.text}</p></div>
+          <div><span>Уровень</span><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
+          <div><span>Проверить</span><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
+        </div>
+        <p className="soft-text">Lumora учитывает план-факт, скидки, сигналы, фудкост и качество данных. Индекс нужен как быстрый ориентир, а не как бухгалтерский расчёт.</p>
+      </Section>
+
+      <Section title="Главные риски" subtitle="что выше нормы или требует контроля">
+        {risks.length ? risks.map((item, index) => <RiskLine item={item} key={`${item.title}-${index}`} />) : <EmptyState title="Рисков пока нет" />}
+      </Section>
+
+      <Section title="Сигналы Lumora" subtitle="короткие уведомления по периоду">
+        {alerts.length ? alerts.map((item, index) => <div className={`event-row ${toneClass(item.level)}`} key={index}><span>⌁</span><div><b>{item.title}</b><p>{item.text}</p></div></div>) : <EmptyState title="Сигналов пока нет" />}
+      </Section>
+
+      <Section title="Качество данных" subtitle="что можно показывать клиенту уверенно">
+        <div className="event-list">
+          <div className="event-row good"><span>✓</span><div><b>KPI и каналы</b><p>{summary?.dataQuality?.kpi || 'Выручка, чеки и каналы подключены.'}</p></div></div>
+          <div className="event-row good"><span>✓</span><div><b>Почасовка</b><p>{summary?.dataQuality?.hourly || 'Пики продаж по часам подключены.'}</p></div></div>
+          <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{summary?.dataQuality?.waiters || 'Выручка есть, средний чек справочный до калибровки.'}</p></div></div>
+          <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{summary?.dataQuality?.restaurants || 'Выручка по точкам есть, чеки и гости требуют калибровки.'}</p></div></div>
+          <div className="event-row neutral"><span>•</span><div><b>Фудкост</b><p>{summary?.dataQuality?.foodcost || 'Себестоимость нужно подключить отдельно.'}</p></div></div>
+        </div>
+      </Section>
+
+      <Section title="Отчёт по рискам" subtitle="готовый текст для управляющего">
+        <pre className="soft-text" style={{ whiteSpace: 'pre-wrap', marginTop: 0 }}>{report}</pre>
+      </Section>
+    </>
+  );
+}
+
 function RiskLine({ item }) {
   return (
     <div className={`risk-line ${toneClass(item.level)}`}>
@@ -844,15 +1157,9 @@ function RiskLine({ item }) {
 }
 
 function RisksScreen({ summary }) {
-  const risks = summary?.problems?.length ? summary.problems : summary?.moneyLosses || [];
   return (
     <div className="screen-stack">
-      <Section title="Риски" subtitle="что выше нормы, ниже нормы и требует внимания">
-        {risks.length ? risks.map((item, index) => <RiskLine item={item} key={`${item.title}-${index}`} />) : <EmptyState title="Рисков пока нет" />}
-      </Section>
-      <Section title="Сигналы" subtitle="уведомления Lumora">
-        {(summary?.alerts || []).map((item, index) => <div className={`event-row ${toneClass(item.level)}`} key={index}><span>⌁</span><div><b>{item.title}</b><p>{item.text}</p></div></div>)}
-      </Section>
+      <RiskDashboardBlock summary={summary} />
     </div>
   );
 }
@@ -900,6 +1207,7 @@ function ControlScreen({ settings, setSettings, summary, reload }) {
           return <div className="control-row" key={key}><div><b>{item?.label || key}</b><p>{item?.value || '—'}</p></div><input type="checkbox" checked={settings.visible?.[key] !== false} onChange={(e) => updateVisible(key, e.target.checked)} /></div>;
         })}
       </Section>
+      <DataReadinessBlock summary={summary} />
       <button className="primary-btn" onClick={reload}>Обновить данные из API</button>
     </div>
   );
