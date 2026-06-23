@@ -348,18 +348,18 @@ function DiscountAnalyticsBlock({ summary, compact = false }) {
 
   if (!channels.length && !days.length) {
     return (
-      <Section title="Скидки и потери" subtitle="контроль скидок по проценту от продаж">
+      <Section title="Скидки и бонусы" subtitle="скидки, списания и бонусная система">
         <EmptyState title="Скидок пока нет" text="После загрузки channel_sales Lumora покажет скидки по каналам и дням." />
       </Section>
     );
   }
 
   return (
-    <Section title="Скидки и потери" subtitle="оцениваем по проценту от продаж, а не только по сумме">
+    <Section title="Скидки и бонусы" subtitle="скидки, списания и бонусная система">
       <div className="forecast-grid">
         <div><span>Всего скидок</span><b>{analytics.totalDiscountsText || money(0)}</b><p>{analytics.percentText || '0%'} от продаж</p></div>
         <div><span>Главный канал</span><b>{worstChannel?.name || '—'}</b><p>{worstChannel ? `${worstChannel.percentText} · ${worstChannel.discountsText}` : '—'}</p></div>
-        <div><span>День проверки</span><b>{worstDay?.label || '—'}</b><p>{worstDay ? `${worstDay.percentText} · ${worstDay.discountsText}` : '—'}</p></div>
+        <div><span>Бонусы</span><b>в работе</b><p>добавим списания баллов из iiko</p></div>
       </div>
       <p className="soft-text">{analytics.insight || 'Lumora анализирует скидки по каналам и дням.'}</p>
 
@@ -673,8 +673,6 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
         {visible.map((item) => <StatCard key={item?.key} item={item} trend={summary?.week} />)}
       </div>
 
-      <ExecutiveFocusBlock summary={summary} settings={settings} setTab={setTab} />
-
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
           <div><span>Сейчас</span><b>{money(revenue)}</b></div>
@@ -688,9 +686,16 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <NetworkPointsBlock summary={summary} compact />
 
-      <DiscountAnalyticsBlock summary={summary} compact />
+      <Section title="Топ-10 категорий по выручке" subtitle="что приносит основную кассу">
+        {summary?.categories?.length ? summary.categories.slice(0, 10).map((item) => (
+          <div className="category-row" key={item.name}>
+            <div><b>{item.name}</b><span>{num(item.quantity)} продаж</span></div>
+            <div><strong>{item.revenueText}</strong><span>{item.cost > 0 ? `Фудкост: ${item.foodcostText} · Маржа: ${item.marginText}` : 'Себестоимость не подключена'}</span></div>
+          </div>
+        )) : <EmptyState title="Категорий пока нет" />}
+      </Section>
 
-      <OwnerReportBlock summary={summary} compact />
+      <DiscountAnalyticsBlock summary={summary} compact />
 
       <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
         {summary?.moments?.length ? (
