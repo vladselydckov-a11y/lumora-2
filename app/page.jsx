@@ -346,28 +346,61 @@ function DiscountAnalyticsBlock({ summary, compact = false }) {
   const worstChannel = analytics.worstChannel || channels[0];
   const worstDay = analytics.worstDay || riskyDays[0] || days.slice().sort((a, b) => Number(b?.percent || 0) - Number(a?.percent || 0))[0];
 
+  const totalBonusesText = analytics.totalBonusesText || '0 ₽';
+  const loyaltyOrdersCount = Number(analytics.loyaltyOrdersCount || 0);
+  const bonusOrdersCount = Number(analytics.bonusOrdersCount || 0);
+  const loyaltyShareText = analytics.loyaltyShareText || '0%';
+  const bonusText = analytics.bonusInsight || (
+    loyaltyOrdersCount > 0
+      ? `Списаний бонусов нет, но заказов с картой/лояльностью: ${loyaltyOrdersCount}.`
+      : 'Списаний бонусов и заказов с картой за период не видно.'
+  );
+
   if (!channels.length && !days.length) {
     return (
       <Section title="Скидки и бонусы" subtitle="скидки, списания и бонусная система">
-        <EmptyState title="Скидок пока нет" text="После загрузки channel_sales Lumora покажет скидки по каналам и дням." />
+        <EmptyState title="Скидок пока нет" text="После загрузки channel_sales Lumora покажет скидки, бонусы и заказы с картой." />
       </Section>
     );
   }
 
   return (
-    <Section title="Скидки и бонусы" subtitle="скидки, списания и бонусная система">
+    <Section title="Скидки и бонусы" subtitle="скидки, списания бонусов и заказы с картой">
       <div className="forecast-grid">
-        <div><span>Всего скидок</span><b>{analytics.totalDiscountsText || money(0)}</b><p>{analytics.percentText || '0%'} от продаж</p></div>
-        <div><span>Главный канал</span><b>{worstChannel?.name || '—'}</b><p>{worstChannel ? `${worstChannel.percentText} · ${worstChannel.discountsText}` : '—'}</p></div>
-        <div><span>Бонусы</span><b>в работе</b><p>добавим списания баллов из iiko</p></div>
+        <div>
+          <span>Всего скидок</span>
+          <b>{analytics.totalDiscountsText || money(0)}</b>
+          <p>{analytics.percentText || '0%'} от продаж</p>
+        </div>
+
+        <div>
+          <span>Бонусы</span>
+          <b>{totalBonusesText}</b>
+          <p>{bonusOrdersCount > 0 ? `${bonusOrdersCount} заказов со списанием` : 'списаний за период нет'}</p>
+        </div>
+
+        <div>
+          <span>Карты / лояльность</span>
+          <b>{loyaltyOrdersCount}</b>
+          <p>{loyaltyOrdersCount > 0 ? `${loyaltyShareText} от чеков` : 'заказов с картой не видно'}</p>
+        </div>
       </div>
-      <p className="soft-text">{analytics.insight || 'Lumora анализирует скидки по каналам и дням.'}</p>
+
+      <p className="soft-text">{analytics.insight || bonusText}</p>
 
       <div className="event-list">
         {channels.slice(0, compact ? 3 : 5).map((item) => (
           <div className={`channel-row ${toneClass(item.status)}`} key={`discount-channel-${item.key || item.name}`}>
-            <div><b>{item.name}</b><span>{item.statusText || 'статус'} · {item.revenueText} выручки</span></div>
-            <div><strong>{item.discountsText}</strong><em>{item.percentText}</em></div>
+            <div>
+              <b>{item.name}</b>
+              <span>
+                {item.statusText || 'статус'} · {item.revenueText} выручки · бонусы {item.bonusesText || '0 ₽'}
+              </span>
+            </div>
+            <div>
+              <strong>{item.discountsText}</strong>
+              <em>{item.percentText}</em>
+            </div>
           </div>
         ))}
       </div>
@@ -377,18 +410,31 @@ function DiscountAnalyticsBlock({ summary, compact = false }) {
           <div className="event-list">
             {days.slice(0, 7).map((item) => (
               <div className={`channel-row ${toneClass(item.status)}`} key={`discount-day-${item.date || item.label}`}>
-                <div><b>{item.label || item.date}</b><span>{item.statusText || 'статус'} · {item.revenueText} выручки</span></div>
-                <div><strong>{item.discountsText}</strong><em>{item.percentText}</em></div>
+                <div>
+                  <b>{item.label || item.date}</b>
+                  <span>
+                    {item.statusText || 'статус'} · {item.revenueText} выручки · бонусы {item.bonusesText || '0 ₽'}
+                  </span>
+                </div>
+                <div>
+                  <strong>{item.discountsText}</strong>
+                  <em>{item.percentText}</em>
+                </div>
               </div>
             ))}
           </div>
+
+          <div className="ai-note">
+            <b>Бонусная система</b>
+            <p>{bonusText}</p>
+          </div>
+
           <p className="soft-text">{analytics.advice || 'Если процент скидок выше обычного, проверьте причины скидок, смену и канал продаж.'}</p>
         </>
       ) : null}
     </Section>
   );
 }
-
 
 function buildOwnerReport(summary) {
   const revenue = metricRaw(summary, 'revenue');
@@ -676,17 +722,10 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
           <div><span>Сейчас</span><b>{money(revenue)}</b></div>
-          <div><span>Прогноз периода</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
+          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
           <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
-
-        <div className="forecast-grid">
-          <div><span>Темп в день</span><b>{money(summary?.forecast?.monthlyTempo || 0)}</b></div>
-          <div><span>Прогноз месяца</span><b>{money(summary?.forecast?.projectedMonth || 0)}</b></div>
-          <div><span>План месяца</span><b>{money(summary?.forecast?.monthPlan || settings.planMonth)}</b></div>
-        </div>
-        <p className="soft-text">{summary?.forecast?.monthRisk || 'Месячный прогноз появится после первых продаж.'}</p>
       </Section>
 
       <HourlyAnalyticsBlock summary={summary} compact />
