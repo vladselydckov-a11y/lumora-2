@@ -676,10 +676,17 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
           <div><span>Сейчас</span><b>{money(revenue)}</b></div>
-          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
+          <div><span>Прогноз периода</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
           <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
+
+        <div className="forecast-grid">
+          <div><span>Темп в день</span><b>{money(summary?.forecast?.monthlyTempo || 0)}</b></div>
+          <div><span>Прогноз месяца</span><b>{money(summary?.forecast?.projectedMonth || 0)}</b></div>
+          <div><span>План месяца</span><b>{money(summary?.forecast?.monthPlan || settings.planMonth)}</b></div>
+        </div>
+        <p className="soft-text">{summary?.forecast?.monthRisk || 'Месячный прогноз появится после первых продаж.'}</p>
       </Section>
 
       <HourlyAnalyticsBlock summary={summary} compact />
