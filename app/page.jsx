@@ -1226,6 +1226,233 @@ function RisksScreen({ summary }) {
   );
 }
 
+
+const ACCESS_ADMIN_STORAGE_KEY = 'klik_access_admin_key';
+
+function roleLabel(role) {
+  const map = { owner: 'Владелец', admin: 'Администратор', manager: 'Управляющий', viewer: 'Просмотр' };
+  return map[role] || role || 'Просмотр';
+}
+
+function normalizeInputUsername(value) {
+  return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function AccessAdminBlock({ summary }) {
+  const [adminKey, setAdminKey] = useState('');
+  const [data, setData] = useState({ access: [], invites: [], restaurants: [] });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [restaurantId, setRestaurantId] = useState('');
+  const [username, setUsername] = useState('');
+  const [role, setRole] = useState('manager');
+  const [newRestaurantName, setNewRestaurantName] = useState('');
+  const [newRestaurantId, setNewRestaurantId] = useState('');
+  const [newRestaurantCity, setNewRestaurantCity] = useState('Тюмень');
+
+  const restaurants = (data.restaurants && data.restaurants.length ? data.restaurants : (summary?.network?.restaurants || []));
+  const selectedRestaurant = restaurants.find((item) => item.id === restaurantId) || restaurants[0];
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem(ACCESS_ADMIN_STORAGE_KEY) || '';
+    if (stored) setAdminKey(stored);
+  }, []);
+
+  useEffect(() => {
+    if (!restaurantId && restaurants[0]?.id) setRestaurantId(restaurants[0].id);
+  }, [restaurants, restaurantId]);
+
+  function saveAdminKey(nextKey) {
+    setAdminKey(nextKey);
+    if (typeof window !== 'undefined') localStorage.setItem(ACCESS_ADMIN_STORAGE_KEY, nextKey);
+  }
+
+  async function loadAccess() {
+    if (!adminKey.trim()) {
+      setMessage('Вставь ACCESS_ADMIN_KEY из Vercel, чтобы открыть управление доступами.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/access/team?admin_key=${encodeURIComponent(adminKey.trim())}&t=${Date.now()}`, { cache: 'no-store' });
+      const next = await response.json();
+      if (!next.ok) throw new Error(next.error || 'Не удалось загрузить доступы');
+      setData(next);
+      setMessage('Доступы загружены.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка загрузки доступов.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addMember() {
+    const cleanUsername = normalizeInputUsername(username);
+    if (!restaurantId || !cleanUsername) {
+      setMessage('Выбери ресторан и введи Telegram username сотрудника.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/access/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_key: adminKey.trim(), restaurant_id: restaurantId, username: cleanUsername, role })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось добавить сотрудника');
+      setUsername('');
+      setMessage(result.message || `@${cleanUsername} добавлен в ожидание первого входа.`);
+      await loadAccess();
+    } catch (error) {
+      setMessage(error.message || 'Ошибка добавления сотрудника.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeMember(item, type = 'access') {
+    if (!adminKey.trim()) return;
+    setLoading(true);
+    setMessage('');
+    try {
+      const payload = type === 'invite'
+        ? { admin_key: adminKey.trim(), invite_id: item.id }
+        : { admin_key: adminKey.trim(), id: item.id };
+      const response = await fetch('/api/access/team', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось удалить доступ');
+      setMessage('Доступ удалён.');
+      await loadAccess();
+    } catch (error) {
+      setMessage(error.message || 'Ошибка удаления доступа.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addRestaurant() {
+    const name = newRestaurantName.trim();
+    if (!name) {
+      setMessage('Введи название ресторана.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/access/restaurants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_key: adminKey.trim(), id: newRestaurantId.trim(), name, city: newRestaurantCity.trim() || 'Город', is_active: true })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось добавить ресторан');
+      setNewRestaurantName('');
+      setNewRestaurantId('');
+      setMessage('Ресторан добавлен в справочник. Данные появятся после подключения iiko/n8n/Supabase.');
+      await loadAccess();
+    } catch (error) {
+      setMessage(error.message || 'Ошибка добавления ресторана.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <Section title="Личный кабинет" subtitle="рестораны, сотрудники и доступы">
+        <label>
+          <span>Админ-ключ</span>
+          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
+        </label>
+        <button className="primary-btn" onClick={loadAccess} disabled={loading}>{loading ? 'Загружаю…' : 'Загрузить доступы'}</button>
+        {message ? <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>{message}</p> : null}
+        <p style={{ margin: '12px 0 0', color: 'var(--muted)', fontSize: 12, lineHeight: 1.4 }}>
+          Текущий дашборд пока не закрыт доступами. Это безопасный режим: сначала настраиваем кабинет, потом включаем ограничение просмотра.
+        </p>
+      </Section>
+
+      <Section title="Добавить сотрудника" subtitle="внешне через @username, технически позже привяжем telegram_id">
+        <label>
+          <span>Ресторан</span>
+          <select value={restaurantId || selectedRestaurant?.id || ''} onChange={(e) => setRestaurantId(e.target.value)}>
+            {restaurants.map((item) => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Telegram username</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@manager" />
+        </label>
+        <label>
+          <span>Роль</span>
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="owner">Владелец</option>
+            <option value="admin">Администратор</option>
+            <option value="manager">Управляющий</option>
+            <option value="viewer">Только просмотр</option>
+          </select>
+        </label>
+        <button className="primary-btn" onClick={addMember} disabled={loading || !adminKey.trim()}>Добавить сотрудника</button>
+      </Section>
+
+      <Section title="Сотрудники" subtitle="активные доступы и ожидающие приглашения">
+        {(data.access || []).length ? data.access.map((item) => (
+          <div className="control-row" key={item.id}>
+            <div>
+              <b>{item.username ? `@${item.username}` : item.telegram_id || 'Сотрудник'}</b>
+              <p>{roleLabel(item.role)} · {restaurants.find((restaurant) => restaurant.id === item.restaurant_id)?.name || item.restaurant_id}</p>
+            </div>
+            <button onClick={() => removeMember(item, 'access')} disabled={loading}>Удалить</button>
+          </div>
+        )) : <EmptyState title="Активных сотрудников пока нет" text="Добавь сотрудника по Telegram username. После первого входа его доступ можно будет привязать к telegram_id." />}
+
+        {(data.invites || []).length ? <h3 style={{ margin: '16px 0 10px' }}>Ожидают входа</h3> : null}
+        {(data.invites || []).map((item) => (
+          <div className="control-row" key={item.id}>
+            <div>
+              <b>{item.username || `@${item.username_normalized}`}</b>
+              <p>{roleLabel(item.role)} · {restaurants.find((restaurant) => restaurant.id === item.restaurant_id)?.name || item.restaurant_id}</p>
+            </div>
+            <button onClick={() => removeMember(item, 'invite')} disabled={loading}>Отменить</button>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Рестораны" subtitle="справочник точек внутри продукта">
+        {(restaurants || []).map((item) => (
+          <div className="control-row" key={item.id}>
+            <div>
+              <b>{item.name || item.id}</b>
+              <p>{item.city || 'Город'} · id: {item.id}</p>
+            </div>
+            <span>{item.is_active === false ? 'выкл.' : 'активен'}</span>
+          </div>
+        ))}
+        <label>
+          <span>Название нового ресторана</span>
+          <input value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} placeholder="Например: Новый ресторан" />
+        </label>
+        <label>
+          <span>ID ресторана, можно оставить пустым</span>
+          <input value={newRestaurantId} onChange={(e) => setNewRestaurantId(e.target.value)} placeholder="new_restaurant" />
+        </label>
+        <label>
+          <span>Город</span>
+          <input value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} placeholder="Тюмень" />
+        </label>
+        <button className="primary-btn" onClick={addRestaurant} disabled={loading || !adminKey.trim()}>Добавить ресторан</button>
+      </Section>
+    </>
+  );
+}
+
 function ControlScreen({ settings, setSettings, summary, reload }) {
   const [saved, setSaved] = useState(false);
 
@@ -1262,6 +1489,8 @@ function ControlScreen({ settings, setSettings, summary, reload }) {
         <div className="control-row"><div><b>Фудкост</b><p>Включать только после себестоимости iiko</p></div><input type="checkbox" checked={settings.showFoodcostCard} onChange={(e) => update('showFoodcostCard', e.target.checked)} /></div>
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
       </Section>
+
+      <AccessAdminBlock summary={summary} />
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
         {['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'].map((key) => {
