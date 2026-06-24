@@ -220,11 +220,21 @@ function Section({ title, subtitle, action, children, className = '' }) {
   );
 }
 
+function statDeltaText(item) {
+  if (!item) return '—';
+  if (item.key === 'avgCheck') {
+    if (item.status === 'good') return 'выше цели';
+    if (item.status === 'bad') return 'ниже цели';
+  }
+  if (item.key === 'discounts' && item.status === 'bad' && item.delta) return item.delta;
+  return item.delta || '—';
+}
+
 function StatCard({ item, trend }) {
   if (!item || item.disabled) return null;
   return (
     <article className={`stat-card ${item.status || 'neutral'}`}>
-      <div className="stat-top"><span>{item.label}</span><b>{item.delta || '—'}</b></div>
+      <div className="stat-top"><span>{item.label}</span><b>{statDeltaText(item)}</b></div>
       <strong>{item.value}</strong>
       {trend ? <Sparkline data={trend} field={item.key === 'avgCheck' ? 'avgCheck' : item.key === 'checks' ? 'checks' : 'revenue'} /> : null}
     </article>
@@ -325,14 +335,14 @@ function NetworkPointsBlock({ summary, compact = false }) {
             <div className="channel-row" key={item.id || item.name}>
               <div>
                 <b>{item.name}</b>
-                <span>{item.status === 'good' ? 'норма' : 'фокус на выручку'} · чеки и гости по точке пока справочно</span>
+                <span>выручка и доля за выбранный период</span>
               </div>
               <div><strong>{money(revenue)}</strong><em>{share}%</em></div>
             </div>
           );
         })}
       </div>
-      <p className="soft-text">По точкам сейчас надёжно показываем выручку и долю. Чеки, гости и средний чек по отдельным точкам включим после калибровки.</p>
+      <p className="soft-text">Точки считаются по выбранному периоду: день, неделя или месяц. Сумма точек должна сходиться с выручкой всей сети.</p>
     </Section>
   );
 }
@@ -462,7 +472,7 @@ function buildOwnerReport(summary) {
     `2. Чеки: ${num(checks)}. Гости: ${num(guests)}. Средний чек: ${money(avgCheck)}${avgCheckTarget ? ` при цели ${money(avgCheckTarget)}` : ''}. Средний чек гостя: ${money(avgGuest)}.`,
     bestChannel ? `3. Основной канал: ${bestChannel.name}, ${bestChannel.revenueText || money(bestChannel.revenue)}, доля ${bestChannel.share || 0}%.` : null,
     bestHour ? `4. Главный час продаж: ${bestHour.label}, ${bestHour.revenueText || money(bestHour.revenue)}.` : null,
-    discount.totalDiscountsText ? `5. Скидки: ${discount.totalDiscountsText}, ${discount.percentText || discounts?.delta || '0%'} от продаж. Канал проверки: ${worstChannel?.name || 'нет'}, день проверки: ${worstDay?.label || 'нет'}.` : `5. Скидки: ${discounts?.value || money(0)}, ${discounts?.delta || '0% от продаж'}.`,
+    discount.totalDiscountsText ? `5. Скидки: ${discount.totalDiscountsText}, ${discount.percentText || discounts?.delta || '0%'} от продаж. Основной канал проверки: ${worstChannel?.name || 'нет'}.` : `5. Скидки: ${discounts?.value || money(0)}, ${discounts?.delta || '0% от продаж'}.`,
     topDish ? `6. Блюдо в фокусе: ${topDish.name}, ${topDish.revenue}.` : null,
     ``,
     `Что проверить:`,
@@ -470,8 +480,8 @@ function buildOwnerReport(summary) {
     worstChannel ? `- Скидки в канале ${worstChannel.name}: ${worstChannel.percentText || ''}, ${worstChannel.discountsText || ''}.` : null,
     worstDay ? `- День со скидками: ${worstDay.label}, ${worstDay.percentText || ''}, ${worstDay.discountsText || ''}.` : null,
     bestHour ? `- Смену и кухню усилить около ${bestHour.label}.` : null,
-    `- Фудкост не оценивать до подключения себестоимости iiko.`,
-    `- По официантам смотреть выручку, средний чек считать справочным до калибровки чеков.`
+    `- Фудкост смотреть по подключенной себестоимости и категориям.`,
+    `- По официантам смотреть выручку; средний чек пока на проверке.`
   ];
 
   return lines.filter(Boolean).join('\n');
@@ -648,8 +658,8 @@ function WaiterShiftScriptBlock({ summary }) {
     script,
     '',
     leader ? `Лидер по выручке: ${leader.name}, ${leader.revenue}.` : null,
-    low ? `Зона внимания по выручке: ${low.name}, ${low.revenue}. Не делать вывод по среднему чеку до калибровки чеков.` : null,
-    'Важно: по официантам сейчас безопасно смотреть выручку; средний чек справочный.'
+    low ? `Зона внимания по выручке: ${low.name}, ${low.revenue}. Средний чек по сотрудникам пока на проверке.` : null,
+    'Важно: по официантам сейчас безопасно смотреть выручку; средний чек по сотрудникам пока на проверке.'
   ].filter(Boolean).join('\n');
 
   async function copyScript() {
@@ -667,7 +677,7 @@ function WaiterShiftScriptBlock({ summary }) {
       <div className="forecast-grid">
         <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
         <div><span>Фокус</span><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
-        <div><span>Осторожно</span><b>чеки</b><p>нужна калибровка</p></div>
+        <div><span>Средний чек</span><b>на проверке</b><p>выручка точная</p></div>
       </div>
       <div className="ai-note"><b>{script}</b></div>
     </Section>
@@ -681,8 +691,8 @@ function DataReadinessBlock({ summary }) {
         <div className="event-row good"><span>✓</span><div><b>KPI</b><p>{summary?.dataQuality?.kpi || 'Выручка, чеки, гости и средние чеки подключены.'}</p></div></div>
         <div className="event-row good"><span>✓</span><div><b>Каналы и скидки</b><p>{summary?.dataQuality?.discounts || 'Скидки считаются по проценту от продаж.'}</p></div></div>
         <div className="event-row good"><span>✓</span><div><b>Почасовка</b><p>{summary?.dataQuality?.hourly || 'Пики продаж по часам подключены.'}</p></div></div>
-        <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{summary?.dataQuality?.waiters || 'Выручка есть, средний чек справочный до калибровки.'}</p></div></div>
-        <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{summary?.dataQuality?.restaurants || 'Выручка по точкам есть, чеки и гости требуют калибровки.'}</p></div></div>
+        <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{'Выручка по сотрудникам подключена. Средний чек по сотрудникам показываем осторожно.'}</p></div></div>
+        <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{'Точки сети считаются по выбранному периоду и сходятся с выручкой сети.'}</p></div></div>
         <div className="event-row neutral"><span>•</span><div><b>Фудкост</b><p>{summary?.dataQuality?.foodcost || 'Себестоимость нужно подключить отдельным этапом.'}</p></div></div>
       </div>
     </Section>
@@ -843,11 +853,11 @@ function WaitersScreen({ summary, period, setPeriod }) {
     <div className="screen-stack">
       <PeriodSwitch period={period} setPeriod={setPeriod} />
       <WaiterShiftScriptBlock summary={summary} />
-      <Section title="Выручка по официантам" subtitle="средний чек пока справочно">
+      <Section title="Выручка по официантам" subtitle="выручка точная, средний чек по сотрудникам на проверке">
         {waiters.length ? waiters.map((waiter, index) => (
           <div className="waiter-row" key={`${waiter.name}-${index}`}>
             <span className="rank">{index + 1}</span>
-            <div><b>{waiter.name}</b><p>Выручка учтена · оценку допродаж включим после калибровки чеков</p></div>
+            <div><b>{waiter.name}</b><p>Выручка учтена · допродажи добавим после проверки чеков</p></div>
             <div><strong>{waiter.revenue}</strong><span>{waiter.checks} чеков · {waiter.avgCheck}</span></div>
           </div>
         )) : <EmptyState title="Официантов за период нет" text="Данные появятся после загрузки продаж за выбранную дату." />}
@@ -983,8 +993,8 @@ function buildWeeklyPlanText(summary, settings) {
     'Контроль:',
     '- Каждый день смотреть план-факт и прогноз.',
     '- Скидки оценивать по проценту от продаж, не только по рублям.',
-    '- По официантам пока смотреть выручку, средний чек считать справочным до калибровки.',
-    '- Фудкост не оценивать до подключения себестоимости iiko.'
+    '- По официантам пока смотреть выручку; средний чек по сотрудникам на проверке.',
+    '- Фудкост смотреть по подключенной себестоимости и категориям.'
   ];
 
   if (forecast.recommendations?.length) {
@@ -1132,9 +1142,9 @@ function buildRiskReport(summary) {
     ...(alerts.length ? alerts.slice(0, 5).map((item) => `- ${item.title}: ${item.text}`) : ['- Сигналов пока нет.']),
     '',
     'Ограничения данных:',
-    '- Фудкост не оценивать до подключения себестоимости iiko.',
+    '- Фудкост смотреть по подключенной себестоимости и категориям.',
     '- По официантам сейчас безопасно смотреть выручку, средний чек справочный.',
-    '- По точкам сети сейчас надёжно сравнивать выручку и долю, чеки/гости требуют калибровки.'
+    '- По точкам сети сравнивать выручку и долю за выбранный период.'
   ];
 
   return lines.filter(Boolean).join('\n');
@@ -1185,8 +1195,8 @@ function RiskDashboardBlock({ summary }) {
         <div className="event-list">
           <div className="event-row good"><span>✓</span><div><b>KPI и каналы</b><p>{summary?.dataQuality?.kpi || 'Выручка, чеки и каналы подключены.'}</p></div></div>
           <div className="event-row good"><span>✓</span><div><b>Почасовка</b><p>{summary?.dataQuality?.hourly || 'Пики продаж по часам подключены.'}</p></div></div>
-          <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{summary?.dataQuality?.waiters || 'Выручка есть, средний чек справочный до калибровки.'}</p></div></div>
-          <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{summary?.dataQuality?.restaurants || 'Выручка по точкам есть, чеки и гости требуют калибровки.'}</p></div></div>
+          <div className="event-row warn"><span>!</span><div><b>Официанты</b><p>{'Выручка по сотрудникам подключена. Средний чек по сотрудникам показываем осторожно.'}</p></div></div>
+          <div className="event-row warn"><span>!</span><div><b>Точки сети</b><p>{'Точки сети считаются по выбранному периоду и сходятся с выручкой сети.'}</p></div></div>
           <div className="event-row neutral"><span>•</span><div><b>Фудкост</b><p>{summary?.dataQuality?.foodcost || 'Себестоимость нужно подключить отдельно.'}</p></div></div>
         </div>
       </Section>
