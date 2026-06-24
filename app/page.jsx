@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v9_client_theme';
+
 const DEFAULT_SETTINGS = {
-  theme: 'dark',
+  theme: 'light',
   accent: 'gold',
   restaurantLabel: 'Ресторан',
   planDay: 150000,
@@ -62,7 +64,7 @@ function getLocalDate() {
 function loadSettings() {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
-    const stored = JSON.parse(localStorage.getItem('lumora_settings_v8') || 'null');
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
     return {
       ...DEFAULT_SETTINGS,
       ...(stored || {}),
@@ -75,7 +77,7 @@ function loadSettings() {
 
 function saveSettings(next) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('lumora_settings_v8', JSON.stringify(next));
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
   document.documentElement.dataset.theme = next.theme;
   document.documentElement.dataset.accent = next.accent;
 }
@@ -161,10 +163,9 @@ function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId,
   return (
     <header className="topbar">
       <div className="brand-row">
-        <button className="ghost-icon" aria-label="Меню">☰</button>
         <div className="brand-mark">✦</div>
         <div className="brand-copy">
-          <strong>LUMORA</strong>
+          <strong>КЛИК</strong>
           <span>AI-аналитик ресторана</span>
         </div>
         <button className="ghost-icon" onClick={toggleTheme} aria-label="Тема">{settings.theme === 'dark' ? '☾' : '☀'}</button>
@@ -1256,7 +1257,7 @@ function ControlScreen({ settings, setSettings, summary, reload }) {
       </Section>
 
       <Section title="Внешний вид" subtitle="клиентский режим без технички">
-        <div className="control-row"><div><b>Тема</b><p>Тёмная или светлая</p></div><select value={settings.theme} onChange={(e) => update('theme', e.target.value)}><option value="dark">Тёмная</option><option value="light">Светлая</option></select></div>
+        <div className="control-row"><div><b>Тема</b><p>Светлая основная или тёмная классическая</p></div><select value={settings.theme} onChange={(e) => update('theme', e.target.value)}><option value="light">Светлая основная</option><option value="dark">Тёмная классическая</option></select></div>
         <div className="control-row"><div><b>Акцент</b><p>Золото или синий</p></div><select value={settings.accent} onChange={(e) => update('accent', e.target.value)}><option value="gold">Золото</option><option value="blue">Синий</option></select></div>
         <div className="control-row"><div><b>Фудкост</b><p>Включать только после себестоимости iiko</p></div><input type="checkbox" checked={settings.showFoodcostCard} onChange={(e) => update('showFoodcostCard', e.target.checked)} /></div>
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
