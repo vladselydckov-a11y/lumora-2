@@ -21,10 +21,10 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f3ec;
-  --bg-2: #fffaf1;
-  --card: rgba(255, 255, 255, 0.86);
-  --card-2: rgba(255, 255, 255, 0.96);
+  --bg: #f8f3eb;
+  --bg-2: #fffaf3;
+  --card: rgba(255, 255, 255, 0.90);
+  --card-2: rgba(255, 255, 255, 0.98);
   --stroke: rgba(137, 102, 47, 0.18);
   --text: #1d1710;
   --muted: #80766a;
@@ -66,6 +66,14 @@ button { cursor: pointer; }
 .ambient.one { left: -140px; top: 90px; background: rgba(215, 173, 99, 0.42); }
 .ambient.two { right: -170px; bottom: 80px; background: rgba(113, 60, 177, 0.42); }
 
+:root[data-theme="light"] .lumora-shell {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(215, 173, 99, 0.18), transparent 28%),
+    radial-gradient(circle at 92% 8%, rgba(137, 102, 47, 0.08), transparent 34%),
+    linear-gradient(155deg, #f8f3eb, #fffaf3 52%, #f1e7d9);
+}
+:root[data-theme="light"] .ambient { opacity: 0.16; }
+
 .app-frame {
   position: relative;
   z-index: 1;
@@ -79,7 +87,7 @@ button { cursor: pointer; }
   overflow: hidden;
   backdrop-filter: blur(22px);
 }
-:root[data-theme="light"] .app-frame { background: rgba(255, 249, 238, 0.78); }
+:root[data-theme="light"] .app-frame { background: rgba(255, 252, 246, 0.96); }
 
 .topbar {
   padding: 18px 16px 10px;
@@ -92,14 +100,14 @@ button { cursor: pointer; }
 }
 :root[data-theme="light"] .topbar { background: linear-gradient(180deg, rgba(255, 249, 238, 0.98), rgba(255, 249, 238, 0.78)); }
 
-.brand-row { display: grid; grid-template-columns: 36px 42px 1fr 36px 36px; gap: 10px; align-items: center; }
+.brand-row { display: grid; grid-template-columns: 42px 1fr 36px 36px; gap: 10px; align-items: center; }
 .brand-mark {
   width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
   color: var(--accent-2); border: 1px solid rgba(215, 173, 99, 0.38);
   background: radial-gradient(circle, rgba(215, 173, 99, 0.22), rgba(215, 173, 99, 0.04));
   box-shadow: 0 0 34px rgba(215, 173, 99, 0.18);
 }
-.brand-copy strong { display: block; letter-spacing: 0.22em; font-family: Georgia, serif; font-size: 18px; color: var(--accent-2); }
+.brand-copy strong { display: block; letter-spacing: 0.18em; font-family: Georgia, serif; font-size: 18px; color: var(--accent-2); }
 .brand-copy span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 .ghost-icon, .notify-btn {
   border: 1px solid var(--stroke); background: rgba(255,255,255,0.03); border-radius: 13px; height: 36px;
@@ -277,4 +285,26 @@ button { cursor: pointer; }
   .orb-progress { display: none; }
   .stat-card strong { font-size: 22px; }
   .filter-row { grid-template-columns: 1fr; }
+}
+
+/* KLIK light theme polish */
+:root[data-theme="light"] .period-switch,
+:root[data-theme="light"] .forecast-grid div,
+:root[data-theme="light"] .event-row,
+:root[data-theme="light"] .insight-row,
+:root[data-theme="light"] .plan-row,
+:root[data-theme="light"] .risk-line,
+:root[data-theme="light"] .channel-row,
+:root[data-theme="light"] .category-row,
+:root[data-theme="light"] .dish-line,
+:root[data-theme="light"] .waiter-row,
+:root[data-theme="light"] .control-row {
+  background: rgba(255, 255, 255, 0.66);
+  border-color: rgba(137, 102, 47, 0.12);
+}
+:root[data-theme="light"] .ghost-icon,
+:root[data-theme="light"] .notify-btn,
+:root[data-theme="light"] .section-action button,
+:root[data-theme="light"] .text-btn {
+  background: rgba(255, 255, 255, 0.72);
 }
