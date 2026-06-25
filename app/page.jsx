@@ -236,7 +236,7 @@ function StatCard({ item, trend }) {
   if (!item || item.disabled) return null;
   return (
     <article className={`stat-card ${item.status || 'neutral'}`}>
-      <div className="stat-top"><span>{item.label}</small><b>{statDeltaText(item)}</b></div>
+      <div className="stat-top"><span>{item.label}</span><b>{statDeltaText(item)}</b></div>
       <strong>{item.value}</strong>
       {trend ? <Sparkline data={trend} field={item.key === 'avgCheck' ? 'avgCheck' : item.key === 'checks' ? 'checks' : 'revenue'} /> : null}
     </article>
@@ -272,9 +272,9 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
     <>
       <Section title="Пики продаж по часам" subtitle="когда ресторан зарабатывает больше всего">
         <div className="forecast-grid">
-          <div><span>Лучший час</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
-          <div><span>Обед</small><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
-          <div><span>Вечер</small><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
+          <div><span>Лучший час</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
+          <div><span>Обед</span><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
+          <div><span>Вечер</span><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
         </div>
         <p className="soft-text">{analytics.insight || 'Lumora анализирует распределение выручки по часам.'}</p>
         <div className="event-list">
@@ -323,9 +323,9 @@ function NetworkPointsBlock({ summary, compact = false }) {
     <Section title="Точки сети" subtitle="выручка и доля каждой точки">
       {!compact ? (
         <div className="forecast-grid">
-          <div><span>Сумма точек</small><b>{money(totalRevenue)}</b><p>{visibleRestaurants.length} точки</p></div>
-          <div><span>Лидер</small><b>{leader?.name || '—'}</b><p>{leader ? money(leader.revenue) : '—'}</p></div>
-          <div><span>Доля лидера</small><b>{totalRevenue && leader ? Math.round((Number(leader.revenue || 0) / totalRevenue) * 100) : 0}%</b><p>от выручки точек</p></div>
+          <div><span>Сумма точек</span><b>{money(totalRevenue)}</b><p>{visibleRestaurants.length} точки</p></div>
+          <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader ? money(leader.revenue) : '—'}</p></div>
+          <div><span>Доля лидера</span><b>{totalRevenue && leader ? Math.round((Number(leader.revenue || 0) / totalRevenue) * 100) : 0}%</b><p>от выручки точек</p></div>
         </div>
       ) : null}
 
@@ -512,9 +512,9 @@ function OwnerReportBlock({ summary, compact = false }) {
   return (
     <Section title="Отчёт владельцу" subtitle="готовая выжимка для отправки" action={<button onClick={copyReport}>{copied ? 'Скопировано' : 'Скопировать отчёт'}</button>}>
       <div className="forecast-grid">
-        <div><span>Выручка</small><b>{money(revenue)}</b><p>{planPercent}% плана</p></div>
-        <div><span>Пик продаж</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет данных'}</p></div>
-        <div><span>Скидки</small><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
+        <div><span>Выручка</span><b>{money(revenue)}</b><p>{planPercent}% плана</p></div>
+        <div><span>Пик продаж</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет данных'}</p></div>
+        <div><span>Скидки</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
       </div>
       <div className="ai-note">
         <b>{summary?.ai?.summary || 'Lumora сформирует отчёт после загрузки данных.'}</b>
@@ -547,9 +547,9 @@ function ExecutiveFocusBlock({ summary, settings, setTab }) {
   return (
     <Section title="Командный фокус" subtitle="что важно сделать сейчас" action={<button onClick={() => setTab('plan')}>к плану</button>}>
       <div className="forecast-grid">
-        <div><span>Главный фокус</small><b>{mainFocus}</b><p>{gap > 0 ? `до плана ${money(gap)}` : 'план близко или закрыт'}</p></div>
-        <div><span>Пик смены</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет почасовки'}</p></div>
-        <div><span>Контроль скидок</small><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstChannel ? `${worstChannel.name}: ${worstChannel.discountsText}` : 'без явного риска'}</p></div>
+        <div><span>Главный фокус</span><b>{mainFocus}</b><p>{gap > 0 ? `до плана ${money(gap)}` : 'план близко или закрыт'}</p></div>
+        <div><span>Пик смены</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет почасовки'}</p></div>
+        <div><span>Контроль скидок</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstChannel ? `${worstChannel.name}: ${worstChannel.discountsText}` : 'без явного риска'}</p></div>
       </div>
       <div className="event-list">
         {(summary?.forecast?.recommendations || []).slice(0, 3).map((item, index) => (
@@ -600,9 +600,9 @@ function ExportPackBlock({ summary }) {
   return (
     <Section title="Пакет для владельца" subtitle="отчёт + риски + скрипт в один текст" action={<button onClick={copyPack}>{copied ? 'Скопировано' : 'Скопировать всё'}</button>}>
       <div className="forecast-grid">
-        <div><span>Отчёт</small><b>готов</b><p>цифры и выводы</p></div>
-        <div><span>Риски</small><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
-        <div><span>Команда</small><b>скрипт</b><p>для рабочего чата</p></div>
+        <div><span>Отчёт</span><b>готов</b><p>цифры и выводы</p></div>
+        <div><span>Риски</span><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
+        <div><span>Команда</span><b>скрипт</b><p>для рабочего чата</p></div>
       </div>
       <p className="soft-text">Один текст можно отправить владельцу, управляющему или в рабочий чат. Без технички, только управленческая выжимка.</p>
     </Section>
@@ -638,9 +638,9 @@ function MenuStrategyBlock({ summary }) {
   return (
     <Section title="Меню-фокус" subtitle="что продвигать и что проверить" action={<button onClick={copyMenuFocus}>{copied ? 'Скопировано' : 'Скопировать меню-фокус'}</button>}>
       <div className="forecast-grid">
-        <div><span>Продвигать</small><b>{topDish?.name || '—'}</b><p>{topDish?.revenue || 'нет данных'}</p></div>
-        <div><span>Категория</small><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
-        <div><span>Проверить</small><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
+        <div><span>Продвигать</span><b>{topDish?.name || '—'}</b><p>{topDish?.revenue || 'нет данных'}</p></div>
+        <div><span>Категория</span><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
+        <div><span>Проверить</span><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
       </div>
       <p className="soft-text">Lumora показывает, что можно продвигать по выручке. Маржу и фудкост включаем только после подключения себестоимости.</p>
     </Section>
@@ -677,9 +677,9 @@ function WaiterShiftScriptBlock({ summary }) {
   return (
     <Section title="Скрипт для смены" subtitle="готовый текст для рабочего чата" action={<button onClick={copyScript}>{copied ? 'Скопировано' : 'Скопировать скрипт'}</button>}>
       <div className="forecast-grid">
-        <div><span>Лидер</small><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
-        <div><span>Фокус</small><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
-        <div><span>Средний чек</small><b>на проверке</b><p>выручка точная</p></div>
+        <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
+        <div><span>Фокус</span><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
+        <div><span>Средний чек</span><b>на проверке</b><p>выручка точная</p></div>
       </div>
       <div className="ai-note"><b>{script}</b></div>
     </Section>
@@ -733,9 +733,9 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
-          <div><span>Сейчас</small><b>{money(revenue)}</b></div>
-          <div><span>Прогноз</small><b>{money(summary?.forecast?.projected || 0)}</b></div>
-          <div><span>{planLabel(period)}</small><b>{money(plan)}</b></div>
+          <div><span>Сейчас</span><b>{money(revenue)}</b></div>
+          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
+          <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
       </Section>
@@ -1032,9 +1032,9 @@ function WeeklyActionPlanBlock({ summary, settings, compact = false }) {
   return (
     <Section title="План действий" subtitle="что делать владельцу, управляющему и смене" action={<button onClick={copyPlan}>{copied ? 'Скопировано' : 'Скопировать план'}</button>}>
       <div className="forecast-grid">
-        <div><span>Выполнение</small><b>{percent}%</b><p>{money(revenue)} из {money(plan)}</p></div>
-        <div><span>До плана</small><b>{money(gap)}</b><p>{gap > 0 ? 'нужно добрать' : 'цель закрыта'}</p></div>
-        <div><span>Фокус</small><b>{bestHour?.label || worstChannel?.name || 'План-факт'}</b><p>{bestHour ? `пик ${bestHour.revenueText}` : worstChannel ? `скидки ${worstChannel.percentText}` : 'контроль периода'}</p></div>
+        <div><span>Выполнение</span><b>{percent}%</b><p>{money(revenue)} из {money(plan)}</p></div>
+        <div><span>До плана</span><b>{money(gap)}</b><p>{gap > 0 ? 'нужно добрать' : 'цель закрыта'}</p></div>
+        <div><span>Фокус</span><b>{bestHour?.label || worstChannel?.name || 'План-факт'}</b><p>{bestHour ? `пик ${bestHour.revenueText}` : worstChannel ? `скидки ${worstChannel.percentText}` : 'контроль периода'}</p></div>
       </div>
 
       <div className="event-list">
@@ -1066,9 +1066,9 @@ function PlanScreen({ summary, settings }) {
           <p>{money(revenue)} из {money(plan)} · до плана {money(gap)}</p>
         </div>
         <div className="forecast-grid">
-          <div><span>Сейчас</small><b>{money(revenue)}</b><p>факт периода</p></div>
-          <div><span>Прогноз</small><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
-          <div><span>Уверенность</small><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
+          <div><span>Сейчас</span><b>{money(revenue)}</b><p>факт периода</p></div>
+          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
+          <div><span>Уверенность</span><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
         </div>
       </Section>
 
@@ -1178,9 +1178,9 @@ function RiskDashboardBlock({ summary }) {
     <>
       <Section title="Карта рисков" subtitle="что проверить в первую очередь" action={<button onClick={copyRiskReport}>{copied ? 'Скопировано' : 'Скопировать риски'}</button>}>
         <div className="forecast-grid">
-          <div><span>Индекс риска</small><b>{score}/100</b><p>{level.text}</p></div>
-          <div><span>Уровень</small><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
-          <div><span>Проверить</small><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
+          <div><span>Индекс риска</span><b>{score}/100</b><p>{level.text}</p></div>
+          <div><span>Уровень</span><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
+          <div><span>Проверить</span><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
         </div>
         <p className="soft-text">Lumora учитывает план-факт, скидки, сигналы, фудкост и качество данных. Индекс нужен как быстрый ориентир, а не как бухгалтерский расчёт.</p>
       </Section>
