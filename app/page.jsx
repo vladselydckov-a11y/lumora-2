@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'lumora_settings_v11_access_guard';
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v12_client_polish';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -236,7 +236,7 @@ function StatCard({ item, trend }) {
   if (!item || item.disabled) return null;
   return (
     <article className={`stat-card ${item.status || 'neutral'}`}>
-      <div className="stat-top"><span>{item.label}</span><b>{statDeltaText(item)}</b></div>
+      <div className="stat-top"><span>{item.label}</small><b>{statDeltaText(item)}</b></div>
       <strong>{item.value}</strong>
       {trend ? <Sparkline data={trend} field={item.key === 'avgCheck' ? 'avgCheck' : item.key === 'checks' ? 'checks' : 'revenue'} /> : null}
     </article>
@@ -272,9 +272,9 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
     <>
       <Section title="Пики продаж по часам" subtitle="когда ресторан зарабатывает больше всего">
         <div className="forecast-grid">
-          <div><span>Лучший час</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
-          <div><span>Обед</span><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
-          <div><span>Вечер</span><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
+          <div><span>Лучший час</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
+          <div><span>Обед</small><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
+          <div><span>Вечер</small><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
         </div>
         <p className="soft-text">{analytics.insight || 'Lumora анализирует распределение выручки по часам.'}</p>
         <div className="event-list">
@@ -323,9 +323,9 @@ function NetworkPointsBlock({ summary, compact = false }) {
     <Section title="Точки сети" subtitle="выручка и доля каждой точки">
       {!compact ? (
         <div className="forecast-grid">
-          <div><span>Сумма точек</span><b>{money(totalRevenue)}</b><p>{visibleRestaurants.length} точки</p></div>
-          <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader ? money(leader.revenue) : '—'}</p></div>
-          <div><span>Доля лидера</span><b>{totalRevenue && leader ? Math.round((Number(leader.revenue || 0) / totalRevenue) * 100) : 0}%</b><p>от выручки точек</p></div>
+          <div><span>Сумма точек</small><b>{money(totalRevenue)}</b><p>{visibleRestaurants.length} точки</p></div>
+          <div><span>Лидер</small><b>{leader?.name || '—'}</b><p>{leader ? money(leader.revenue) : '—'}</p></div>
+          <div><span>Доля лидера</small><b>{totalRevenue && leader ? Math.round((Number(leader.revenue || 0) / totalRevenue) * 100) : 0}%</b><p>от выручки точек</p></div>
         </div>
       ) : null}
 
@@ -512,9 +512,9 @@ function OwnerReportBlock({ summary, compact = false }) {
   return (
     <Section title="Отчёт владельцу" subtitle="готовая выжимка для отправки" action={<button onClick={copyReport}>{copied ? 'Скопировано' : 'Скопировать отчёт'}</button>}>
       <div className="forecast-grid">
-        <div><span>Выручка</span><b>{money(revenue)}</b><p>{planPercent}% плана</p></div>
-        <div><span>Пик продаж</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет данных'}</p></div>
-        <div><span>Скидки</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
+        <div><span>Выручка</small><b>{money(revenue)}</b><p>{planPercent}% плана</p></div>
+        <div><span>Пик продаж</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет данных'}</p></div>
+        <div><span>Скидки</small><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
       </div>
       <div className="ai-note">
         <b>{summary?.ai?.summary || 'Lumora сформирует отчёт после загрузки данных.'}</b>
@@ -547,9 +547,9 @@ function ExecutiveFocusBlock({ summary, settings, setTab }) {
   return (
     <Section title="Командный фокус" subtitle="что важно сделать сейчас" action={<button onClick={() => setTab('plan')}>к плану</button>}>
       <div className="forecast-grid">
-        <div><span>Главный фокус</span><b>{mainFocus}</b><p>{gap > 0 ? `до плана ${money(gap)}` : 'план близко или закрыт'}</p></div>
-        <div><span>Пик смены</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет почасовки'}</p></div>
-        <div><span>Контроль скидок</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstChannel ? `${worstChannel.name}: ${worstChannel.discountsText}` : 'без явного риска'}</p></div>
+        <div><span>Главный фокус</small><b>{mainFocus}</b><p>{gap > 0 ? `до плана ${money(gap)}` : 'план близко или закрыт'}</p></div>
+        <div><span>Пик смены</small><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || 'нет почасовки'}</p></div>
+        <div><span>Контроль скидок</small><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstChannel ? `${worstChannel.name}: ${worstChannel.discountsText}` : 'без явного риска'}</p></div>
       </div>
       <div className="event-list">
         {(summary?.forecast?.recommendations || []).slice(0, 3).map((item, index) => (
@@ -600,9 +600,9 @@ function ExportPackBlock({ summary }) {
   return (
     <Section title="Пакет для владельца" subtitle="отчёт + риски + скрипт в один текст" action={<button onClick={copyPack}>{copied ? 'Скопировано' : 'Скопировать всё'}</button>}>
       <div className="forecast-grid">
-        <div><span>Отчёт</span><b>готов</b><p>цифры и выводы</p></div>
-        <div><span>Риски</span><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
-        <div><span>Команда</span><b>скрипт</b><p>для рабочего чата</p></div>
+        <div><span>Отчёт</small><b>готов</b><p>цифры и выводы</p></div>
+        <div><span>Риски</small><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
+        <div><span>Команда</small><b>скрипт</b><p>для рабочего чата</p></div>
       </div>
       <p className="soft-text">Один текст можно отправить владельцу, управляющему или в рабочий чат. Без технички, только управленческая выжимка.</p>
     </Section>
@@ -638,9 +638,9 @@ function MenuStrategyBlock({ summary }) {
   return (
     <Section title="Меню-фокус" subtitle="что продвигать и что проверить" action={<button onClick={copyMenuFocus}>{copied ? 'Скопировано' : 'Скопировать меню-фокус'}</button>}>
       <div className="forecast-grid">
-        <div><span>Продвигать</span><b>{topDish?.name || '—'}</b><p>{topDish?.revenue || 'нет данных'}</p></div>
-        <div><span>Категория</span><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
-        <div><span>Проверить</span><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
+        <div><span>Продвигать</small><b>{topDish?.name || '—'}</b><p>{topDish?.revenue || 'нет данных'}</p></div>
+        <div><span>Категория</small><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
+        <div><span>Проверить</small><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
       </div>
       <p className="soft-text">Lumora показывает, что можно продвигать по выручке. Маржу и фудкост включаем только после подключения себестоимости.</p>
     </Section>
@@ -677,9 +677,9 @@ function WaiterShiftScriptBlock({ summary }) {
   return (
     <Section title="Скрипт для смены" subtitle="готовый текст для рабочего чата" action={<button onClick={copyScript}>{copied ? 'Скопировано' : 'Скопировать скрипт'}</button>}>
       <div className="forecast-grid">
-        <div><span>Лидер</span><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
-        <div><span>Фокус</span><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
-        <div><span>Средний чек</span><b>на проверке</b><p>выручка точная</p></div>
+        <div><span>Лидер</small><b>{leader?.name || '—'}</b><p>{leader?.revenue || 'нет данных'}</p></div>
+        <div><span>Фокус</small><b>{summary?.hourlyAnalytics?.bestHour?.label || 'смена'}</b><p>{summary?.hourlyAnalytics?.bestHour?.revenueText || 'пики продаж'}</p></div>
+        <div><span>Средний чек</small><b>на проверке</b><p>выручка точная</p></div>
       </div>
       <div className="ai-note"><b>{script}</b></div>
     </Section>
@@ -733,9 +733,9 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
-          <div><span>Сейчас</span><b>{money(revenue)}</b></div>
-          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
-          <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
+          <div><span>Сейчас</small><b>{money(revenue)}</b></div>
+          <div><span>Прогноз</small><b>{money(summary?.forecast?.projected || 0)}</b></div>
+          <div><span>{planLabel(period)}</small><b>{money(plan)}</b></div>
         </div>
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
       </Section>
@@ -1032,9 +1032,9 @@ function WeeklyActionPlanBlock({ summary, settings, compact = false }) {
   return (
     <Section title="План действий" subtitle="что делать владельцу, управляющему и смене" action={<button onClick={copyPlan}>{copied ? 'Скопировано' : 'Скопировать план'}</button>}>
       <div className="forecast-grid">
-        <div><span>Выполнение</span><b>{percent}%</b><p>{money(revenue)} из {money(plan)}</p></div>
-        <div><span>До плана</span><b>{money(gap)}</b><p>{gap > 0 ? 'нужно добрать' : 'цель закрыта'}</p></div>
-        <div><span>Фокус</span><b>{bestHour?.label || worstChannel?.name || 'План-факт'}</b><p>{bestHour ? `пик ${bestHour.revenueText}` : worstChannel ? `скидки ${worstChannel.percentText}` : 'контроль периода'}</p></div>
+        <div><span>Выполнение</small><b>{percent}%</b><p>{money(revenue)} из {money(plan)}</p></div>
+        <div><span>До плана</small><b>{money(gap)}</b><p>{gap > 0 ? 'нужно добрать' : 'цель закрыта'}</p></div>
+        <div><span>Фокус</small><b>{bestHour?.label || worstChannel?.name || 'План-факт'}</b><p>{bestHour ? `пик ${bestHour.revenueText}` : worstChannel ? `скидки ${worstChannel.percentText}` : 'контроль периода'}</p></div>
       </div>
 
       <div className="event-list">
@@ -1066,9 +1066,9 @@ function PlanScreen({ summary, settings }) {
           <p>{money(revenue)} из {money(plan)} · до плана {money(gap)}</p>
         </div>
         <div className="forecast-grid">
-          <div><span>Сейчас</span><b>{money(revenue)}</b><p>факт периода</p></div>
-          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
-          <div><span>Уверенность</span><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
+          <div><span>Сейчас</small><b>{money(revenue)}</b><p>факт периода</p></div>
+          <div><span>Прогноз</small><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
+          <div><span>Уверенность</small><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
         </div>
       </Section>
 
@@ -1178,9 +1178,9 @@ function RiskDashboardBlock({ summary }) {
     <>
       <Section title="Карта рисков" subtitle="что проверить в первую очередь" action={<button onClick={copyRiskReport}>{copied ? 'Скопировано' : 'Скопировать риски'}</button>}>
         <div className="forecast-grid">
-          <div><span>Индекс риска</span><b>{score}/100</b><p>{level.text}</p></div>
-          <div><span>Уровень</span><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
-          <div><span>Проверить</span><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
+          <div><span>Индекс риска</small><b>{score}/100</b><p>{level.text}</p></div>
+          <div><span>Уровень</small><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
+          <div><span>Проверить</small><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
         </div>
         <p className="soft-text">Lumora учитывает план-факт, скидки, сигналы, фудкост и качество данных. Индекс нужен как быстрый ориентир, а не как бухгалтерский расчёт.</p>
       </Section>
@@ -1390,7 +1390,7 @@ function AccessGuardSettingsBlock({ settings, update, authInfo }) {
   const enabled = Boolean(settings.hardAccessProtection);
   const wouldBlock = shouldBlockDashboard(authInfo, { ...settings, hardAccessProtection: true });
   return (
-    <Section title="Финальная защита доступа" subtitle="пока можно включать только после проверки ролей">
+    <Section title="Защита доступа" subtitle="финальный режим включается отдельно, после тестов">
       <div className={`event-row ${enabled ? 'warn' : 'good'}`}>
         <span>{enabled ? '!' : '✓'}</span>
         <div>
@@ -1405,7 +1405,7 @@ function AccessGuardSettingsBlock({ settings, update, authInfo }) {
         </div>
         <input type="checkbox" checked={enabled} onChange={(e) => update('hardAccessProtection', e.target.checked)} />
       </div>
-      <p className="muted-line">Для показа клиенту лучше держать выключенным. Включим после теста с отдельным сотрудником и аккаунтом без доступа.</p>
+      <p className="muted-line">Перед клиентским показом держим выключенным. Включать только после теста с отдельным аккаунтом без доступа.</p>
     </Section>
   );
 }
@@ -1418,7 +1418,7 @@ function SoftAccessPolicyBlock({ authInfo }) {
   const tone = !isTelegram ? 'warn' : isPlatformOwner || businesses.length || activeAccess.length ? 'good' : 'bad';
 
   return (
-    <Section title="Политика доступа" subtitle="мягкий режим: роли уже работают, жёсткая блокировка пока выключена">
+    <Section title="Схема доступа" subtitle="понятно, кто что видит в продукте">
       <div className={`event-row ${tone}`}>
         <span>{tone === 'bad' ? '!' : '✓'}</span>
         <div><b>{accessPolicyTitle(authInfo)}</b><p>{accessPolicyText(authInfo)}</p></div>
@@ -1428,7 +1428,7 @@ function SoftAccessPolicyBlock({ authInfo }) {
         <div className="mini-card"><small>Точки</small><b>{activeAccess.length}</b></div>
         <div className="mini-card"><small>Жёсткая защита</small><b>выкл.</b></div>
       </div>
-      <p className="muted-line">Следующий слой после проверки: включить экран “Нет доступа” для пользователей без роли, но пока мы не рискуем запереть рабочий MVP.</p>
+      <p className="muted-line">Сейчас это безопасный режим: роли уже определяются, но рабочий дашборд не закрывается без отдельного теста.</p>
     </Section>
   );
 }
@@ -1455,7 +1455,7 @@ function AccessModeBlock({ authInfo }) {
   ]);
 
   return (
-    <Section title="Режим доступа" subtitle="кто сейчас открыл приложение">
+    <Section title="Кто сейчас в системе" subtitle="роль и видимость интерфейса">
       <div className="control-row">
         <div>
           <b>{getAccessModeTitle(authInfo)}</b>
@@ -1787,7 +1787,7 @@ function PlatformAdminBlock({ authInfo }) {
   }
 
   return (
-    <Section title="Кабинет платформы" subtitle="твой внутренний экран владельца КЛИК: клиенты, рестораны, подписки, владельцы и доступы">
+    <Section title="Кабинет платформы" subtitle="внутренний экран КЛИК: клиенты, рестораны, подписки, владельцы и платежи">
       {canLoadWithTelegram ? (
         <div className="control-row">
           <div><b>Доступ владельца платформы активен</b><p>Кабинет загружается по Telegram ID, ключ в интерфейсе не нужен.</p></div>
@@ -1803,9 +1803,9 @@ function PlatformAdminBlock({ authInfo }) {
       {message ? <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>{message}</p> : null}
 
       <div className="mini-grid" style={{ marginTop: 16 }}>
-        <div className="mini-card"><span>Клиенты</span><b>{businesses.length}</b><p>{activeBusinesses} активных</p></div>
-        <div className="mini-card"><span>Оплачено</span><b>{paidBusinesses}</b><p>{trialBusinesses} trial · {overdueBusinesses} просрочено</p></div>
-        <div className="mini-card"><span>Платежи</span><b>{money(totalPaid)}</b><p>{pendingTotal ? `${money(pendingTotal)} ожидается` : 'долгов не видно'}</p></div>
+        <div className="mini-card"><small>Клиенты</small><b>{businesses.length}</b><p>{activeBusinesses} активных</p></div>
+        <div className="mini-card"><small>Оплачено</small><b>{paidBusinesses}</b><p>{trialBusinesses} trial · {overdueBusinesses} просрочено</p></div>
+        <div className="mini-card"><small>Платежи</small><b>{money(totalPaid)}</b><p>{pendingTotal ? `${money(pendingTotal)} ожидается` : 'долгов не видно'}</p></div>
       </div>
 
       <div className="period-switch" style={{ marginTop: 16 }}>
@@ -1827,9 +1827,9 @@ function PlatformAdminBlock({ authInfo }) {
             </div>
           </div>
           <div className="mini-grid" style={{ marginTop: 12 }}>
-            <div className="mini-card"><span>Все рестораны</span><b>{restaurants.length}</b><p>в базе платформы</p></div>
-            <div className="mini-card"><span>Активные доступы</span><b>{access.length}</b><p>{invites.length} ожидают входа</p></div>
-            <div className="mini-card"><span>Админы платформы</span><b>{admins.length}</b><p>внутренний доступ</p></div>
+            <div className="mini-card"><small>Все рестораны</small><b>{restaurants.length}</b><p>в базе платформы</p></div>
+            <div className="mini-card"><small>Активные доступы</small><b>{access.length}</b><p>{invites.length} ожидают входа</p></div>
+            <div className="mini-card"><small>Админы платформы</small><b>{admins.length}</b><p>внутренний доступ</p></div>
           </div>
           {selectedBusiness ? (
             <div className="control-row" style={{ marginTop: 14 }}>
@@ -1879,9 +1879,9 @@ function PlatformAdminBlock({ authInfo }) {
               </div>
 
               <div className="mini-grid" style={{ marginTop: 12 }}>
-                <div className="mini-card"><span>Точки</span><b>{selectedBusiness.restaurants_count || 0}</b><p>{businessRestaurantsText(selectedBusiness)}</p></div>
-                <div className="mini-card"><span>Команда</span><b>{selectedBusiness.access_count || 0}</b><p>{selectedBusiness.invites_count || 0} ожидают входа</p></div>
-                <div className="mini-card"><span>Платежи</span><b>{money(selectedBusiness.paid_total || 0)}</b><p>{selectedBusiness.pending_total ? `${money(selectedBusiness.pending_total)} ожидается` : 'нет долга'}</p></div>
+                <div className="mini-card"><small>Точки</small><b>{selectedBusiness.restaurants_count || 0}</b><p>{businessRestaurantsText(selectedBusiness)}</p></div>
+                <div className="mini-card"><small>Команда</small><b>{selectedBusiness.access_count || 0}</b><p>{selectedBusiness.invites_count || 0} ожидают входа</p></div>
+                <div className="mini-card"><small>Платежи</small><b>{money(selectedBusiness.paid_total || 0)}</b><p>{selectedBusiness.pending_total ? `${money(selectedBusiness.pending_total)} ожидается` : 'нет долга'}</p></div>
               </div>
 
               <div style={{ marginTop: 16 }}>
@@ -2115,7 +2115,7 @@ function AccessAdminBlock({ summary, authInfo }) {
 
   return (
     <>
-      <Section title="Личный кабинет" subtitle="рестораны, сотрудники и доступы">
+      <Section title="Управление доступами" subtitle="сотрудники, приглашения и рестораны">
         <label>
           <span>Админ-ключ</span>
           <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
@@ -2127,7 +2127,7 @@ function AccessAdminBlock({ summary, authInfo }) {
         </p>
       </Section>
 
-      <Section title="Мой доступ" subtitle="автоматическая привязка после входа через Telegram">
+      <Section title="Мой доступ" subtitle="что видит текущий Telegram-аккаунт">
         {authInfo?.mode === 'telegram' ? (
           <>
             <div className="control-row"><div><b>@{authInfo?.user?.username || 'без username'}</b><p>Telegram ID: {authInfo?.user?.id || '—'}</p></div><span>{authInfo?.access?.length ? 'активен' : 'нет активного доступа'}</span></div>
@@ -2253,6 +2253,21 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Акцент</b><p>Золото или синий</p></div><select value={settings.accent} onChange={(e) => update('accent', e.target.value)}><option value="gold">Золото</option><option value="blue">Синий</option></select></div>
         <div className="control-row"><div><b>Фудкост</b><p>Включать только после себестоимости iiko</p></div><input type="checkbox" checked={settings.showFoodcostCard} onChange={(e) => update('showFoodcostCard', e.target.checked)} /></div>
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
+      </Section>
+
+      <Section title="Готовность к показу" subtitle="клиентский вид без лишней технички">
+        <div className="event-row good">
+          <span>✓</span>
+          <div>
+            <b>Основная аналитика не тронута</b>
+            <p>Выручка, чеки, гости, средний чек, точки, каналы, скидки, фудкост, блюда, категории и почасовка остаются на реальных данных из iiko/Supabase.</p>
+          </div>
+        </div>
+        <div className="mini-grid">
+          <div className="mini-card"><small>Доступы</small><b>готовы</b><p>роли и кабинеты разделены</p></div>
+          <div className="mini-card"><small>Защита</small><b>мягко</b><p>жёсткая блокировка выключена</p></div>
+          <div className="mini-card"><small>Показ</small><b>безопасно</b><p>данные MVP не менялись</p></div>
+        </div>
       </Section>
 
       <AccessModeBlock authInfo={authInfo} />
