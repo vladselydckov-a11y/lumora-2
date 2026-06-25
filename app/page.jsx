@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'lumora_settings_v9_client_theme';
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v10_access_policy';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -1340,6 +1340,46 @@ function canManageAccessCabinet(authInfo) {
   return getBusinessCabinetUsers(authInfo).some((item) => ['business_owner', 'business_admin'].includes(item.role));
 }
 
+
+function accessPolicyTitle(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return 'Dev-режим без Telegram';
+  if (isPlatformOwnerUser(authInfo)) return 'Полный доступ владельца платформы';
+  if (getBusinessCabinetBusinesses(authInfo).length) return 'Кабинет клиента';
+  if (getActiveAccess(authInfo).length) return 'Доступ сотрудника';
+  return 'Доступ не найден';
+}
+
+function accessPolicyText(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return 'В браузере дашборд открыт для проверки. В проде клиентские роли проверяются в Telegram Mini App.';
+  if (isPlatformOwnerUser(authInfo)) return 'Ты видишь всех клиентов, бизнесы, подписки, рестораны и сотрудников. Это внутренний режим владельца КЛИК.';
+  if (getBusinessCabinetBusinesses(authInfo).length) return 'Ресторатор видит только свой бизнес, свои рестораны и своих сотрудников. Кабинет платформы скрыт.';
+  if (getActiveAccess(authInfo).length) return 'Сотрудник видит только назначенные точки. Управление платформой и чужими бизнесами скрыто.';
+  return 'Пока доступ не выдан. В финальном режиме такой пользователь увидит экран запроса доступа.';
+}
+
+function SoftAccessPolicyBlock({ authInfo }) {
+  const activeAccess = getActiveAccess(authInfo);
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  const isPlatformOwner = isPlatformOwnerUser(authInfo);
+  const isTelegram = isTelegramAccessMode(authInfo);
+  const tone = !isTelegram ? 'warn' : isPlatformOwner || businesses.length || activeAccess.length ? 'good' : 'bad';
+
+  return (
+    <Section title="Политика доступа" subtitle="мягкий режим: роли уже работают, жёсткая блокировка пока выключена">
+      <div className={`event-row ${tone}`}>
+        <span>{tone === 'bad' ? '!' : '✓'}</span>
+        <div><b>{accessPolicyTitle(authInfo)}</b><p>{accessPolicyText(authInfo)}</p></div>
+      </div>
+      <div className="mini-grid">
+        <div className="mini-card"><small>Бизнесы</small><b>{businesses.length}</b></div>
+        <div className="mini-card"><small>Точки</small><b>{activeAccess.length}</b></div>
+        <div className="mini-card"><small>Жёсткая защита</small><b>выкл.</b></div>
+      </div>
+      <p className="muted-line">Следующий слой после проверки: включить экран “Нет доступа” для пользователей без роли, но пока мы не рискуем запереть рабочий MVP.</p>
+    </Section>
+  );
+}
+
 function getAccessModeTitle(authInfo) {
   if (!isTelegramAccessMode(authInfo)) return 'Режим разработчика';
   if (isPlatformOwnerUser(authInfo)) return 'Владелец платформы';
@@ -2163,6 +2203,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
       </Section>
 
       <AccessModeBlock authInfo={authInfo} />
+      <SoftAccessPolicyBlock authInfo={authInfo} />
       {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
       <ClientBusinessCabinetBlock authInfo={authInfo} />
       {canManageAccessCabinet(authInfo) ? (
