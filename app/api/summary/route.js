@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseSummary } from '../../../lib/supabaseServer';
+import { assertApiAccess } from '../../../lib/saasAccessGuard';
 
 function formatMoney(value) {
   return `${Math.round(Number(value || 0)).toLocaleString('ru-RU')} ₽`;
@@ -67,6 +68,9 @@ export async function GET(request) {
   const restaurantId = searchParams.get('restaurant_id') || 'all';
   const date = searchParams.get('date') || undefined;
   const period = searchParams.get('period') || 'day';
+
+  const guard = await assertApiAccess(request, { restaurantId, section: 'today' });
+  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   if (process.env.USE_SUPABASE === 'true') {
     const realSummary = await getSupabaseSummary({ restaurantId, date, period }).catch((error) => {
