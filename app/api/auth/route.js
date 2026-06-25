@@ -5,30 +5,150 @@ import {
   enrichAccessWithRestaurants,
   upsertAppUser,
   getAccessForTelegramId,
-  getActiveRestaurants
+  getActiveRestaurants,
+  normalizeUsername
 } from '../../../lib/accessServer';
+import { supabaseFetch } from '../../../lib/supabaseServer';
+
+function enc(value) {
+  return encodeURIComponent(String(value || ''));
+}
+
+function uniqueByKey(rows = [], key = 'id') {
+  const seen = new Set();
+  return rows.filter((item) => {
+    const value = item?.[key] || JSON.stringify(item);
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+}
+
+function byBusinessId(rows = []) {
+  const map = new Map();
+  rows.forEach((item) => {
+    const id = item?.business_id;
+    if (!id) return;
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push(item);
+  });
+  return map;
+}
+
+async function fetchPlatformForUser(user, accessRows = [], restaurants = []) {
+  try {
+    if (!user?.id) {
+      return {
+        isPlatformOwner: false,
+        admins: [],
+        businessUsers: [],
+        businesses: [],
+        note: 'Нет Telegram ID для проверки платформенных ролей.'
+      };
+    }
+
+    const telegramId = String(user.id);
+    const username = normalizeUsername(user.username);
+
+    const [adminsByTelegram, adminsByUsername, businessUsersByTelegram, businessUsersByUsername] = await Promise.all([
+      supabaseFetch(`/rest/v1/platform_admins?select=telegram_id,username,role,status&telegram_id=eq.${enc(telegramId)}&status=eq.active`).catch(() => []),
+      username ? supabaseFetch(`/rest/v1/platform_admins?select=telegram_id,username,role,status&username=eq.${enc(username)}&status=eq.active`).catch(() => []) : Promise.resolve([]),
+      supabaseFetch(`/rest/v1/platform_business_users?select=*&telegram_id=eq.${enc(telegramId)}&status=eq.active`).catch(() => []),
+      username ? supabaseFetch(`/rest/v1/platform_business_users?select=*&username_normalized=eq.${enc(username)}&status=eq.active`).catch(() => []) : Promise.resolve([])
+    ]);
+
+    const admins = uniqueByKey([...(adminsByTelegram || []), ...(adminsByUsername || [])], 'telegram_id');
+    let businessUsers = uniqueByKey([...(businessUsersByTelegram || []), ...(businessUsersByUsername || [])], 'id');
+
+    const usersWithoutTelegram = businessUsers.filter((item) => !item.telegram_id && item.username_normalized === username);
+    await Promise.all(usersWithoutTelegram.map((item) => supabaseFetch(`/rest/v1/platform_business_users?id=eq.${enc(item.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ telegram_id: telegramId, updated_at: new Date().toISOString() })
+    }).catch(() => null)));
+    businessUsers = businessUsers.map((item) => item.telegram_id ? item : { ...item, telegram_id: telegramId });
+
+    const isPlatformOwner = admins.some((item) => item.role === 'platform_owner' || item.role === 'platform_admin');
+    const businessIds = [...new Set(businessUsers.map((item) => item.business_id).filter(Boolean))];
+
+    let businesses = [];
+    if (isPlatformOwner || businessIds.length) {
+      const allBusinesses = await supabaseFetch('/rest/v1/platform_businesses?select=*&order=created_at.desc').catch(() => []);
+      const allLinks = await supabaseFetch('/rest/v1/platform_business_restaurants?select=*&order=created_at.asc').catch(() => []);
+      const allBusinessUsers = await supabaseFetch('/rest/v1/platform_business_users?select=*&status=eq.active&order=created_at.desc').catch(() => []);
+      const allPayments = await supabaseFetch('/rest/v1/platform_payments?select=*&order=created_at.desc').catch(() => []);
+
+      const visibleBusinesses = isPlatformOwner
+        ? (Array.isArray(allBusinesses) ? allBusinesses : [])
+        : (Array.isArray(allBusinesses) ? allBusinesses : []).filter((business) => businessIds.includes(business.id));
+
+      const linksByBusiness = byBusinessId(Array.isArray(allLinks) ? allLinks : []);
+      const usersByBusiness = byBusinessId(Array.isArray(allBusinessUsers) ? allBusinessUsers : []);
+      const paymentsByBusiness = byBusinessId(Array.isArray(allPayments) ? allPayments : []);
+      const restaurantMap = new Map((Array.isArray(restaurants) ? restaurants : []).map((item) => [String(item.id), item]));
+
+      businesses = visibleBusinesses.map((business) => {
+        const links = linksByBusiness.get(business.id) || [];
+        const businessRestaurants = links.map((link) => restaurantMap.get(String(link.restaurant_id)) || { id: link.restaurant_id, name: link.restaurant_id, city: business.city, is_active: true });
+        const users = usersByBusiness.get(business.id) || [];
+        const payments = paymentsByBusiness.get(business.id) || [];
+        return {
+          ...business,
+          restaurants: businessRestaurants,
+          restaurants_count: businessRestaurants.length,
+          users,
+          payments,
+          payments_count: payments.length,
+          paid_total: payments.filter((item) => item.status === 'paid').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+          access_count: (accessRows || []).filter((item) => businessRestaurants.map((restaurant) => restaurant.id).includes(item.restaurant_id)).length
+        };
+      });
+    }
+
+    return {
+      isPlatformOwner,
+      role: isPlatformOwner ? 'platform_owner' : (businessUsers[0]?.role || ''),
+      admins,
+      businessUsers,
+      businesses,
+      businessIds,
+      note: isPlatformOwner ? 'Пользователь видит кабинет владельца платформы.' : businessUsers.length ? 'Пользователь видит кабинет своего бизнеса.' : 'Платформенных бизнес-ролей нет.'
+    };
+  } catch (error) {
+    return {
+      isPlatformOwner: false,
+      admins: [],
+      businessUsers: [],
+      businesses: [],
+      error: error?.message || 'platform_access_failed'
+    };
+  }
+}
 
 async function buildAccessPayload(user) {
   try {
     if (!user || !user.id) {
-      return { access: [], restaurants: [], acceptedInvites: [] };
+      return { access: [], restaurants: [], acceptedInvites: [], platform: { isPlatformOwner: false, businessUsers: [], businesses: [] } };
     }
 
     await upsertAppUser(user);
     const acceptedInvites = await acceptPendingInvitesForUser(user);
     const access = await getAccessForTelegramId(user.id);
     const restaurants = await getActiveRestaurants();
+    const enrichedAccess = enrichAccessWithRestaurants(access, restaurants);
+    const platform = await fetchPlatformForUser(user, enrichedAccess, restaurants);
 
     return {
-      access: enrichAccessWithRestaurants(access, restaurants),
+      access: enrichedAccess,
       restaurants,
-      acceptedInvites
+      acceptedInvites,
+      platform
     };
   } catch (error) {
     return {
       access: [],
       restaurants: [],
       acceptedInvites: [],
+      platform: { isPlatformOwner: false, businessUsers: [], businesses: [], error: error?.message || 'platform_access_failed' },
       accessError: error?.message || 'access_check_failed'
     };
   }
@@ -46,6 +166,12 @@ export async function POST(request) {
       access: [],
       restaurants: [],
       acceptedInvites: [],
+      platform: {
+        isPlatformOwner: false,
+        businessUsers: [],
+        businesses: [],
+        note: 'Браузер без Telegram: dev/admin-режим. Клиентские роли проверяются только в Mini App.'
+      },
       note: 'Telegram initData отсутствует. В браузере доступы не привязываются, это нормально.'
     });
   }
@@ -72,7 +198,7 @@ export async function POST(request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    mode: 'auth-ready',
-    note: 'Use POST with Authorization: tma <Telegram initData>. Browser GET is only a health check.'
+    mode: 'auth-ready-stage8',
+    note: 'Use POST with Authorization: tma <Telegram initData>. Stage 8 returns restaurant access plus platform/business roles.'
   });
 }
