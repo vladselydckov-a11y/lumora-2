@@ -3,7 +3,7 @@ import { isFreshAuthDate, parseInitData, validateTelegramInitData } from '../../
 import {
   acceptPendingInvitesForUser,
   enrichAccessWithRestaurants,
-  ensureUserFromTelegram,
+  upsertAppUser,
   getAccessForTelegramId,
   getActiveRestaurants
 } from '../../../lib/accessServer';
@@ -14,7 +14,7 @@ async function buildAccessPayload(user) {
       return { access: [], restaurants: [], acceptedInvites: [] };
     }
 
-    await ensureUserFromTelegram(user);
+    await upsertAppUser(user);
     const acceptedInvites = await acceptPendingInvitesForUser(user);
     const access = await getAccessForTelegramId(user.id);
     const restaurants = await getActiveRestaurants();
