@@ -1295,6 +1295,136 @@ function businessRestaurantsText(business) {
 }
 
 
+function businessRoleLabel(role) {
+  const map = {
+    platform_owner: 'Владелец платформы',
+    platform_admin: 'Админ платформы',
+    business_owner: 'Владелец бизнеса',
+    business_admin: 'Администратор бизнеса',
+    accountant: 'Бухгалтер',
+    viewer: 'Просмотр'
+  };
+  return map[role] || role || 'Пользователь';
+}
+
+function getPlatformInfo(authInfo) {
+  return authInfo?.platform && typeof authInfo.platform === 'object' ? authInfo.platform : {};
+}
+
+function isPlatformOwnerUser(authInfo) {
+  const platform = getPlatformInfo(authInfo);
+  return Boolean(platform?.isPlatformOwner || platform?.role === 'platform_owner');
+}
+
+function getBusinessCabinetBusinesses(authInfo) {
+  const platform = getPlatformInfo(authInfo);
+  return Array.isArray(platform?.businesses) ? platform.businesses : [];
+}
+
+function getBusinessCabinetUsers(authInfo) {
+  const platform = getPlatformInfo(authInfo);
+  return Array.isArray(platform?.businessUsers) ? platform.businessUsers : [];
+}
+
+function getAccessModeTitle(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return 'Режим разработчика';
+  if (isPlatformOwnerUser(authInfo)) return 'Владелец платформы';
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  if (businesses.length) return 'Кабинет клиента';
+  const activeAccess = getActiveAccess(authInfo);
+  if (activeAccess.length) return 'Сотрудник ресторана';
+  return 'Без активного доступа';
+}
+
+function AccessModeBlock({ authInfo }) {
+  const user = authInfo?.user || {};
+  const activeAccess = getActiveAccess(authInfo);
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  const platform = getPlatformInfo(authInfo);
+  const roles = uniqueList([
+    ...(isPlatformOwnerUser(authInfo) ? ['platform_owner'] : []),
+    ...getBusinessCabinetUsers(authInfo).map((item) => item.role),
+    ...activeAccess.map((item) => item.role)
+  ]);
+
+  return (
+    <Section title="Режим доступа" subtitle="кто сейчас открыл приложение">
+      <div className="control-row">
+        <div>
+          <b>{getAccessModeTitle(authInfo)}</b>
+          <p>{isTelegramAccessMode(authInfo) ? `@${user.username || 'telegram'} · ID ${user.id || '—'}` : 'Браузер без Telegram: открыт dev/admin-режим, дашборд не закрыт.'}</p>
+        </div>
+        <span>{authInfo?.mode || 'demo'}</span>
+      </div>
+      <div className="mini-grid">
+        <div className="mini-card"><small>Бизнесы</small><b>{businesses.length}</b></div>
+        <div className="mini-card"><small>Рестораны</small><b>{activeAccess.length}</b></div>
+        <div className="mini-card"><small>Роли</small><b>{roles.length ? roles.map(businessRoleLabel).join(', ') : '—'}</b></div>
+      </div>
+      {platform?.note ? <p className="muted-line">{platform.note}</p> : null}
+    </Section>
+  );
+}
+
+function ClientBusinessCabinetBlock({ authInfo }) {
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  const businessUsers = getBusinessCabinetUsers(authInfo);
+  const activeAccess = getActiveAccess(authInfo);
+
+  if (!isTelegramAccessMode(authInfo)) {
+    return (
+      <Section title="Кабинет клиента" subtitle="то, что видит ресторатор">
+        <EmptyState title="В браузере кабинет клиента не привязывается" text="Открой Mini App из Telegram, чтобы увидеть бизнесы и роли конкретного пользователя." />
+      </Section>
+    );
+  }
+
+  if (!businesses.length) {
+    return (
+      <Section title="Кабинет клиента" subtitle="бизнесы текущего пользователя">
+        <EmptyState title="Бизнесов пока нет" text="Если это владелец ресторана, сначала добавь его в кабинете платформы как business_owner." />
+      </Section>
+    );
+  }
+
+  return (
+    <>
+      <Section title="Кабинет клиента" subtitle="экран ресторатора: только его бизнесы">
+        {businesses.map((business) => {
+          const restaurants = Array.isArray(business.restaurants) ? business.restaurants : [];
+          const users = businessUsers.filter((item) => item.business_id === business.id);
+          const businessAccess = activeAccess.filter((item) => restaurants.map((restaurant) => restaurant.id).includes(item.restaurant_id));
+          return (
+            <div className="business-card" key={business.id}>
+              <div className="business-card-head">
+                <div>
+                  <b>{business.name}</b>
+                  <p>{business.city || 'Город'} · {subscriptionStatusLabel(business.subscription_status)} · {business.plan_name || 'pilot'}</p>
+                </div>
+                <span className={`status-pill ${subscriptionTone(business.subscription_status)}`}>{subscriptionStatusLabel(business.subscription_status)}</span>
+              </div>
+              <div className="mini-grid">
+                <div className="mini-card"><small>Рестораны</small><b>{restaurants.length}</b></div>
+                <div className="mini-card"><small>Команда</small><b>{users.length}</b></div>
+                <div className="mini-card"><small>Доступы</small><b>{businessAccess.length}</b></div>
+              </div>
+              <p className="muted-line">Рестораны: {businessRestaurantsText(business)}</p>
+              <p className="muted-line">Владелец: {business.owner_username ? `@${normalizeInputUsername(business.owner_username)}` : 'не назначен'}</p>
+            </div>
+          );
+        })}
+      </Section>
+
+      <Section title="Права клиента" subtitle="что сможет делать ресторатор">
+        <div className="event-row good"><span>✓</span><div><b>Видит свой бизнес</b><p>Не видит других клиентов платформы.</p></div></div>
+        <div className="event-row good"><span>✓</span><div><b>Управляет своими ресторанами</b><p>Сможет добавлять сотрудников и выдавать роли внутри своего бизнеса.</p></div></div>
+        <div className="event-row warn"><span>!</span><div><b>Жёсткая блокировка пока выключена</b><p>Сначала проверяем роли, потом закрываем дашборд от чужих пользователей.</p></div></div>
+      </Section>
+    </>
+  );
+}
+
+
 function PlatformAdminBlock() {
   const [adminKey, setAdminKey] = useState('');
   const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], access: [], invites: [] });
@@ -1999,7 +2129,9 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
       </Section>
 
-      <PlatformAdminBlock />
+      <AccessModeBlock authInfo={authInfo} />
+      {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock /> : null}
+      <ClientBusinessCabinetBlock authInfo={authInfo} />
       <AccessAdminBlock summary={summary} authInfo={authInfo} />
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
