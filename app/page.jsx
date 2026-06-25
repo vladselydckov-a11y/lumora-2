@@ -153,7 +153,7 @@ function Sparkline({ data = [], field = 'revenue' }) {
   );
 }
 
-function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId, restaurants, date, setDate, openNotifications }) {
+function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId, restaurants, canSelectAll = true, date, setDate, openNotifications }) {
   function toggleTheme() {
     const next = { ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' };
     setSettings(next);
@@ -174,7 +174,7 @@ function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId,
 
       <div className="filter-row">
         <select value={restaurantId} onChange={(event) => setRestaurantId(event.target.value)} aria-label="Ресторан">
-          <option value="all">Вся сеть</option>
+          {canSelectAll ? <option value="all">Вся сеть</option> : null}
           {restaurants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
         <input type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label="Дата" />
@@ -1234,6 +1234,38 @@ function roleLabel(role) {
   return map[role] || role || 'Просмотр';
 }
 
+function uniqueList(list) {
+  return [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
+}
+
+function getActiveAccess(authInfo) {
+  return Array.isArray(authInfo?.access) ? authInfo.access.filter((item) => item?.status === 'active' && item?.restaurant_id) : [];
+}
+
+function getAllowedRestaurantIds(authInfo) {
+  return uniqueList(getActiveAccess(authInfo).map((item) => item.restaurant_id));
+}
+
+function isTelegramAccessMode(authInfo) {
+  return authInfo?.mode === 'telegram';
+}
+
+function canUseAllRestaurants(authInfo) {
+  const allowedIds = getAllowedRestaurantIds(authInfo);
+  if (!isTelegramAccessMode(authInfo)) return true;
+  return allowedIds.length >= 2;
+}
+
+function filterRestaurantsByAccess(restaurants, authInfo) {
+  const list = Array.isArray(restaurants) ? restaurants : [];
+  if (!isTelegramAccessMode(authInfo)) return list;
+
+  const allowedIds = getAllowedRestaurantIds(authInfo);
+  if (!allowedIds.length) return list;
+
+  return list.filter((item) => allowedIds.includes(item.id));
+}
+
 function normalizeInputUsername(value) {
   return String(value || '').trim().replace(/^@+/, '').toLowerCase();
 }
@@ -1546,7 +1578,9 @@ export default function Page() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [authInfo, setAuthInfo] = useState(null);
 
-  const restaurants = summary?.network?.restaurants || [];
+  const sourceRestaurants = authInfo?.restaurants?.length ? authInfo.restaurants : (summary?.network?.restaurants || []);
+  const restaurants = filterRestaurantsByAccess(sourceRestaurants, authInfo);
+  const canSelectAll = canUseAllRestaurants(authInfo);
 
   async function loadAuth() {
     try {
@@ -1582,6 +1616,22 @@ export default function Page() {
     loadAuth();
   }, []);
 
+  useEffect(() => {
+    if (!isTelegramAccessMode(authInfo)) return;
+
+    const allowedIds = getAllowedRestaurantIds(authInfo);
+    if (!allowedIds.length) return;
+
+    if (restaurantId === 'all' && !canUseAllRestaurants(authInfo)) {
+      setRestaurantId(allowedIds[0]);
+      return;
+    }
+
+    if (restaurantId !== 'all' && !allowedIds.includes(restaurantId)) {
+      setRestaurantId(allowedIds[0]);
+    }
+  }, [authInfo, restaurantId]);
+
   useEffect(() => { loadSummary(); }, [restaurantId, period, date]);
 
   useEffect(() => {
@@ -1608,7 +1658,7 @@ export default function Page() {
       <div className="ambient one" />
       <div className="ambient two" />
       <div className="app-frame">
-        <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
+        <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
         <TopTabs tab={tab} setTab={setTab} />
         <div className="content">{screen}</div>
         {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
