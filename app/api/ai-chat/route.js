@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseSummary } from '../../../lib/supabaseServer';
+import { assertApiAccess } from '../../../lib/saasAccessGuard';
 import {
   buildRestaurantBrainBrief,
   buildRestaurantInstructions,
@@ -82,6 +83,9 @@ export async function POST(request) {
     const period = body?.period || 'day';
     const history = Array.isArray(body?.history) ? body.history.slice(-4) : [];
     const question = String(body?.question || '').trim();
+
+    const guard = await assertApiAccess(request, { restaurantId, section: 'ai' });
+    if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
     if (!question) {
       return NextResponse.json({
