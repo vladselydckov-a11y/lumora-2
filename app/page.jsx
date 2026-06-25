@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'lumora_settings_v13_presentation_mode';
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v16_saas_access';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -18,8 +18,7 @@ const DEFAULT_SETTINGS = {
   discountLimit: 9000,
   autoRefresh: true,
   compactMode: false,
-  hardAccessProtection: false,
-  presentationMode: false,
+  hardAccessProtection: true,
   showFoodcostCard: false,
   aiTone: 'Управленческий',
   visible: {
@@ -186,10 +185,12 @@ function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId,
   );
 }
 
-function TopTabs({ tab, setTab }) {
+function TopTabs({ tab, setTab, authInfo }) {
+  const tabs = getVisibleTabs(authInfo);
+  if (!tabs.length) return null;
   return (
     <nav className="top-tabs" aria-label="Разделы">
-      {TABS.map((item) => (
+      {tabs.map((item) => (
         <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>
           {item.label}
         </button>
@@ -1342,6 +1343,125 @@ function canManageAccessCabinet(authInfo) {
   return getBusinessCabinetUsers(authInfo).some((item) => ['business_owner', 'business_admin'].includes(item.role));
 }
 
+function hasAnyProductAccess(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
+  if (getBusinessCabinetBusinesses(authInfo).length) return true;
+  if (getActiveAccess(authInfo).length) return true;
+  return false;
+}
+
+function getPrimaryBusinessRole(authInfo) {
+  if (isPlatformOwnerUser(authInfo)) return 'platform_owner';
+  const businessUsers = getBusinessCabinetUsers(authInfo);
+  if (businessUsers.some((item) => item.role === 'business_owner')) return 'business_owner';
+  if (businessUsers.some((item) => item.role === 'business_admin')) return 'business_admin';
+  if (businessUsers[0]?.role) return businessUsers[0].role;
+  const activeAccess = getActiveAccess(authInfo);
+  if (activeAccess.some((item) => item.role === 'owner')) return 'owner';
+  if (activeAccess.some((item) => item.role === 'admin')) return 'admin';
+  if (activeAccess[0]?.role) return activeAccess[0].role;
+  return '';
+}
+
+const SECTION_PERMISSION_OPTIONS = [
+  { id: 'today', label: 'Сегодня' },
+  { id: 'reports', label: 'Отчёты' },
+  { id: 'waiters', label: 'Официанты' },
+  { id: 'ai', label: 'Lumora AI' },
+  { id: 'analytics', label: 'AI-аналитика' },
+  { id: 'plan', label: 'План' },
+  { id: 'risks', label: 'Риски' },
+  { id: 'control', label: 'Управление' }
+];
+
+function defaultSectionsForRole(role) {
+  if (['platform_owner', 'platform_admin', 'business_owner', 'business_admin', 'owner', 'admin'].includes(role)) {
+    return SECTION_PERMISSION_OPTIONS.map((item) => item.id);
+  }
+  if (role === 'accountant') return ['today', 'reports', 'analytics', 'risks'];
+  if (role === 'manager') return ['today', 'reports', 'waiters', 'analytics', 'plan', 'risks'];
+  if (role === 'viewer') return ['today', 'reports', 'risks'];
+  if (role === 'employee') return ['today', 'waiters'];
+  return ['today'];
+}
+
+function normalizePermissions(value, role = '') {
+  const defaults = defaultSectionsForRole(role);
+  if (!value || typeof value !== 'object') return { sections: defaults, can_manage_employees: ['business_owner', 'business_admin', 'platform_owner'].includes(role) };
+  const sections = Array.isArray(value.sections) && value.sections.length ? value.sections : defaults;
+  return {
+    ...value,
+    sections,
+    can_manage_employees: Boolean(value.can_manage_employees || ['business_owner', 'business_admin', 'platform_owner'].includes(role))
+  };
+}
+
+function getCurrentPermissions(authInfo) {
+  const role = getPrimaryBusinessRole(authInfo);
+  if (!isTelegramAccessMode(authInfo)) return normalizePermissions({ sections: SECTION_PERMISSION_OPTIONS.map((item) => item.id), can_manage_employees: true }, 'platform_owner');
+  if (isPlatformOwnerUser(authInfo)) return normalizePermissions({ sections: SECTION_PERMISSION_OPTIONS.map((item) => item.id), can_manage_employees: true }, 'platform_owner');
+  const userRows = getBusinessCabinetUsers(authInfo);
+  const row = userRows.find((item) => item.permissions) || userRows[0] || null;
+  return normalizePermissions(row?.permissions, role);
+}
+
+function canSeeSection(authInfo, sectionId) {
+  if (!hasAnyProductAccess(authInfo)) return false;
+  if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
+  const permissions = getCurrentPermissions(authInfo);
+  return (permissions.sections || []).includes(sectionId);
+}
+
+function canManageBusinessEmployees(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
+  const role = getPrimaryBusinessRole(authInfo);
+  const permissions = getCurrentPermissions(authInfo);
+  return ['business_owner', 'business_admin'].includes(role) || Boolean(permissions.can_manage_employees);
+}
+
+function getVisibleTabs(authInfo) {
+  if (isTelegramAccessMode(authInfo) && !hasAnyProductAccess(authInfo)) return [];
+
+  const dashboardTabs = TABS.filter((item) => item.id !== 'control').filter((item) => canSeeSection(authInfo, item.id));
+
+  if (isPlatformOwnerUser(authInfo)) {
+    return [
+      { id: 'platform', label: 'Платформа' },
+      ...dashboardTabs,
+      { id: 'client', label: 'Клиент' },
+      { id: 'control', label: 'Управление' }
+    ];
+  }
+
+  if (getBusinessCabinetBusinesses(authInfo).length) {
+    return [
+      { id: 'client', label: 'Мой бизнес' },
+      ...dashboardTabs,
+      ...(canSeeSection(authInfo, 'control') ? [{ id: 'control', label: 'Управление' }] : [])
+    ];
+  }
+
+  if (getActiveAccess(authInfo).length) {
+    return [
+      ...dashboardTabs,
+      ...(canSeeSection(authInfo, 'control') ? [{ id: 'control', label: 'Управление' }] : [])
+    ];
+  }
+
+  return TABS;
+}
+
+function getAllowedBusinessIds(authInfo) {
+  return uniqueList(getBusinessCabinetBusinesses(authInfo).map((item) => item.id));
+}
+
+function permissionLabel(id) {
+  return SECTION_PERMISSION_OPTIONS.find((item) => item.id === id)?.label || id;
+}
+
 
 function accessPolicyTitle(authInfo) {
   if (!isTelegramAccessMode(authInfo)) return 'Dev-режим без Telegram';
@@ -1361,12 +1481,9 @@ function accessPolicyText(authInfo) {
 
 
 function shouldBlockDashboard(authInfo, settings) {
-  if (!settings?.hardAccessProtection) return false;
+  if (!authInfo) return false;
   if (!isTelegramAccessMode(authInfo)) return false;
-  if (isPlatformOwnerUser(authInfo)) return false;
-  if (getBusinessCabinetBusinesses(authInfo).length) return false;
-  if (getActiveAccess(authInfo).length) return false;
-  return true;
+  return !hasAnyProductAccess(authInfo);
 }
 
 function NoAccessScreen({ authInfo }) {
@@ -1427,7 +1544,7 @@ function SoftAccessPolicyBlock({ authInfo }) {
       <div className="mini-grid">
         <div className="mini-card"><small>Бизнесы</small><b>{businesses.length}</b></div>
         <div className="mini-card"><small>Точки</small><b>{activeAccess.length}</b></div>
-        <div className="mini-card"><small>Жёсткая защита</small><b>выкл.</b></div>
+        <div className="mini-card"><small>Без доступа</small><b>закрыто</b></div>
       </div>
       <p className="muted-line">Сейчас это безопасный режим: роли уже определяются, но рабочий дашборд не закрывается без отдельного теста.</p>
     </Section>
@@ -1523,12 +1640,210 @@ function ClientBusinessCabinetBlock({ authInfo }) {
         })}
       </Section>
 
+      <BusinessTeamManager authInfo={authInfo} />
+
       <Section title="Права клиента" subtitle="что сможет делать ресторатор">
         <div className="event-row good"><span>✓</span><div><b>Видит свой бизнес</b><p>Не видит других клиентов платформы.</p></div></div>
         <div className="event-row good"><span>✓</span><div><b>Управляет своими ресторанами</b><p>Сможет добавлять сотрудников и выдавать роли внутри своего бизнеса.</p></div></div>
         <div className="event-row warn"><span>!</span><div><b>Жёсткая блокировка пока выключена</b><p>Сначала проверяем роли, потом закрываем дашборд от чужих пользователей.</p></div></div>
       </Section>
     </>
+  );
+}
+
+
+function BusinessTeamManager({ authInfo }) {
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  const [selectedBusinessId, setSelectedBusinessId] = useState(businesses[0]?.id || '');
+  const [data, setData] = useState({ members: [], invites: [], access: [], restaurants: [] });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [username, setUsername] = useState('');
+  const [role, setRole] = useState('viewer');
+  const [restaurantIds, setRestaurantIds] = useState([]);
+  const [sections, setSections] = useState(['today', 'reports', 'risks']);
+
+  const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId) || businesses[0] || null;
+  const restaurants = Array.isArray(selectedBusiness?.restaurants) ? selectedBusiness.restaurants : [];
+  const canManage = canManageBusinessEmployees(authInfo);
+
+  useEffect(() => {
+    if (!selectedBusinessId && businesses[0]?.id) setSelectedBusinessId(businesses[0].id);
+  }, [businesses, selectedBusinessId]);
+
+  useEffect(() => {
+    if (selectedBusiness && !restaurantIds.length) setRestaurantIds(restaurants.map((item) => item.id));
+  }, [selectedBusinessId]);
+
+  useEffect(() => {
+    if (selectedBusinessId && canManage) loadMembers();
+  }, [selectedBusinessId, canManage]);
+
+  function toggleRestaurantId(id) {
+    setRestaurantIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleSection(id) {
+    setSections((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  async function loadMembers() {
+    if (!selectedBusinessId) return;
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/business/members?business_id=${encodeURIComponent(selectedBusinessId)}&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: telegramAuthHeaders()
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось загрузить сотрудников');
+      setData(result);
+    } catch (error) {
+      setMessage(error.message || 'Ошибка загрузки сотрудников.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addMember() {
+    const normalized = normalizeInputUsername(username);
+    if (!selectedBusinessId || !normalized) {
+      setMessage('Выбери бизнес и введи Telegram username сотрудника.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/business/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
+        body: JSON.stringify({
+          action: 'add_member',
+          business_id: selectedBusinessId,
+          username: normalized,
+          role,
+          restaurant_ids: restaurantIds,
+          permissions: { sections, can_manage_employees: ['business_owner', 'business_admin'].includes(role) }
+        })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось добавить сотрудника');
+      setUsername('');
+      setData(result);
+      setMessage('Сотрудник добавлен. Если он ещё не заходил в Mini App, доступ активируется после первого входа.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка добавления сотрудника.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeMember(member) {
+    if (!member?.id) return;
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/business/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
+        body: JSON.stringify({ action: 'remove_member', business_id: member.business_id, member_id: member.id })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось удалить сотрудника');
+      setData(result);
+      setMessage('Сотрудник отключён от бизнеса и ресторанов этого бизнеса.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка удаления сотрудника.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!businesses.length) return null;
+
+  if (!canManage) {
+    return (
+      <Section title="Сотрудники" subtitle="управление командой">
+        <EmptyState title="Недостаточно прав" text="Смотреть дашборд можно, но добавлять и удалять сотрудников может только владелец бизнеса или администратор бизнеса." />
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Сотрудники бизнеса" subtitle="владелец сам выдаёт доступы и выбирает, что видит сотрудник">
+      {businesses.length > 1 ? (
+        <label>
+          <span>Бизнес</span>
+          <select value={selectedBusinessId} onChange={(e) => setSelectedBusinessId(e.target.value)}>
+            {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+          </select>
+        </label>
+      ) : null}
+
+      <div className="business-card">
+        <div className="business-card-head">
+          <div>
+            <b>{selectedBusiness?.name || 'Бизнес'}</b>
+            <p>{businessRestaurantsText(selectedBusiness)} · сотрудники видят только выбранные рестораны и разделы</p>
+          </div>
+          <span className="status-pill good">клиентский кабинет</span>
+        </div>
+        <label>
+          <span>Telegram username сотрудника</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@username" />
+        </label>
+        <div className="control-row">
+          <div><b>Роль</b><p>От роли зависит базовый набор прав</p></div>
+          <select value={role} onChange={(e) => {
+            const nextRole = e.target.value;
+            setRole(nextRole);
+            setSections(defaultSectionsForRole(nextRole));
+          }}>
+            <option value="business_admin">Администратор бизнеса</option>
+            <option value="manager">Управляющий</option>
+            <option value="accountant">Бухгалтер</option>
+            <option value="viewer">Просмотр</option>
+            <option value="employee">Сотрудник</option>
+          </select>
+        </div>
+
+        <div className="checkbox-grid">
+          {restaurants.map((restaurant) => (
+            <label key={restaurant.id}><input type="checkbox" checked={restaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurantId(restaurant.id)} /> {restaurant.name}</label>
+          ))}
+        </div>
+
+        <div className="checkbox-grid">
+          {SECTION_PERMISSION_OPTIONS.map((item) => (
+            <label key={item.id}><input type="checkbox" checked={sections.includes(item.id)} onChange={() => toggleSection(item.id)} /> {item.label}</label>
+          ))}
+        </div>
+        <button className="primary-btn" onClick={addMember} disabled={loading || !username.trim()}>{loading ? 'Сохраняю…' : 'Добавить / обновить сотрудника'}</button>
+      </div>
+
+      {message ? <p className="muted-line">{message}</p> : null}
+
+      <div className="mini-grid">
+        <div className="mini-card"><small>Активные</small><b>{(data.members || []).length}</b><p>в бизнесе</p></div>
+        <div className="mini-card"><small>Ожидают входа</small><b>{(data.invites || []).length}</b><p>pending</p></div>
+        <div className="mini-card"><small>Рестораны</small><b>{restaurants.length}</b><p>в этом бизнесе</p></div>
+      </div>
+
+      {(data.members || []).length ? data.members.map((member) => {
+        const permissions = normalizePermissions(member.permissions, member.role);
+        const memberRestaurants = Array.isArray(member.restaurant_ids) && member.restaurant_ids.length ? member.restaurant_ids : restaurants.map((item) => item.id);
+        return (
+          <div className="control-row" key={member.id}>
+            <div>
+              <b>{member.username || member.username_normalized || member.telegram_id}</b>
+              <p>{businessRoleLabel(member.role)} · рестораны: {memberRestaurants.join(', ')} · разделы: {(permissions.sections || []).map(permissionLabel).join(', ')}</p>
+            </div>
+            <button onClick={() => removeMember(member)} disabled={loading}>Удалить</button>
+          </div>
+        );
+      }) : <EmptyState title="Сотрудников пока нет" text="Добавь сотрудника по Telegram username. Если он ещё не входил, появится pending-доступ." />}
+    </Section>
   );
 }
 
@@ -2254,10 +2569,9 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Акцент</b><p>Золото или синий</p></div><select value={settings.accent} onChange={(e) => update('accent', e.target.value)}><option value="gold">Золото</option><option value="blue">Синий</option></select></div>
         <div className="control-row"><div><b>Фудкост</b><p>Включать только после себестоимости iiko</p></div><input type="checkbox" checked={settings.showFoodcostCard} onChange={(e) => update('showFoodcostCard', e.target.checked)} /></div>
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
-        <div className="control-row"><div><b>Режим показа клиенту</b><p>Скрывает внутренние блоки доступов, платформы и тестовые формы в Управлении.</p></div><input type="checkbox" checked={Boolean(settings.presentationMode)} onChange={(e) => update('presentationMode', e.target.checked)} /></div>
       </Section>
 
-      <Section title="Готовность к показу" subtitle="клиентский вид без лишней технички">
+      <Section title="Состояние продукта" subtitle="что уже готово в рабочей версии">
         <div className="event-row good">
           <span>✓</span>
           <div>
@@ -2267,43 +2581,16 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         </div>
         <div className="mini-grid">
           <div className="mini-card"><small>Доступы</small><b>готовы</b><p>роли и кабинеты разделены</p></div>
-          <div className="mini-card"><small>Защита</small><b>мягко</b><p>жёсткая блокировка выключена</p></div>
-          <div className="mini-card"><small>Показ</small><b>безопасно</b><p>данные MVP не менялись</p></div>
+          <div className="mini-card"><small>Без доступа</small><b>закрыто</b><p>Telegram без роли не видит дашборд</p></div>
+          <div className="mini-card"><small>Данные</small><b>не трогали</b><p>iiko/n8n/Supabase без изменений</p></div>
         </div>
       </Section>
 
-      {settings.presentationMode ? (
-        <Section title="Режим показа клиенту включён" subtitle="внутренняя техничка скрыта из управления">
-          <div className="event-row good">
-            <span>✓</span>
-            <div>
-              <b>Можно показывать основной дашборд без админских форм</b>
-              <p>Кабинет платформы, выдача доступов, защита ролей и служебные блоки остаются в коде, но не отвлекают в клиентском режиме.</p>
-            </div>
-          </div>
-          <div className="mini-grid">
-            <div className="mini-card"><small>Показ</small><b>чистый</b><p>без лишних форм</p></div>
-            <div className="mini-card"><small>Данные</small><b>реальные</b><p>iiko/Supabase не тронуты</p></div>
-            <div className="mini-card"><small>Доступы</small><b>на месте</b><p>можно вернуть выключателем</p></div>
-          </div>
-          <p className="muted-line">Чтобы вернуть админские блоки, выключи “Режим показа клиенту” в блоке “Внешний вид”.</p>
-        </Section>
-      ) : (
-        <>
-          <AccessModeBlock authInfo={authInfo} />
-          <SoftAccessPolicyBlock authInfo={authInfo} />
-          <AccessGuardSettingsBlock settings={settings} update={update} authInfo={authInfo} />
-          {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
-          <ClientBusinessCabinetBlock authInfo={authInfo} />
-          {canManageAccessCabinet(authInfo) ? (
-            <AccessAdminBlock summary={summary} authInfo={authInfo} />
-          ) : (
-            <Section title="Доступы" subtitle="управление сотрудниками">
-              <EmptyState title="Управление сотрудниками недоступно" text="Текущая роль может смотреть аналитику, но не выдавать доступы. Для добавления сотрудника нужен владелец или администратор бизнеса." />
-            </Section>
-          )}
-        </>
-      )}
+      <AccessModeBlock authInfo={authInfo} />
+      <SoftAccessPolicyBlock authInfo={authInfo} />
+      {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
+      {getBusinessCabinetBusinesses(authInfo).length ? <ClientBusinessCabinetBlock authInfo={authInfo} /> : null}
+      {!isTelegramAccessMode(authInfo) ? <AccessAdminBlock summary={summary} authInfo={authInfo} /> : null}
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
         {['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'].map((key) => {
@@ -2361,7 +2648,7 @@ export default function Page() {
   async function loadSummary() {
     try {
       setError('');
-      const response = await fetch(`/api/summary?restaurant_id=${restaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/summary?restaurant_id=${restaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
       const data = await response.json();
       setSummary(data);
     } catch {
@@ -2396,6 +2683,15 @@ export default function Page() {
     }
   }, [authInfo, restaurantId]);
 
+
+  useEffect(() => {
+    if (!authInfo) return;
+    const tabs = getVisibleTabs(authInfo);
+    if (tabs.length && !tabs.some((item) => item.id === tab)) {
+      setTab(tabs[0].id);
+    }
+  }, [authInfo, tab]);
+
   useEffect(() => { loadSummary(); }, [restaurantId, period, date]);
 
   useEffect(() => {
@@ -2407,7 +2703,12 @@ export default function Page() {
   const screen = useMemo(() => {
     if (loading) return <div className="loading"><span />Загружаем Lumora…</div>;
     if (error) return <div className="loading error"><p>{error}</p><button onClick={loadSummary}>Повторить</button></div>;
-    if (shouldBlockDashboard(authInfo, settings) && tab !== 'control') return <NoAccessScreen authInfo={authInfo} />;
+    if (shouldBlockDashboard(authInfo, settings)) return <NoAccessScreen authInfo={authInfo} />;
+    const visibleTabs = getVisibleTabs(authInfo);
+    if (visibleTabs.length && !visibleTabs.some((item) => item.id === tab)) return <div className="loading"><span />Настраиваем доступ…</div>;
+    if (tab === 'platform') return <PlatformAdminBlock authInfo={authInfo} />;
+    if (tab === 'client') return <ClientBusinessCabinetBlock authInfo={authInfo} />;
+    if (tab !== 'control' && !canSeeSection(authInfo, tab)) return <NoAccessScreen authInfo={authInfo} />;
     if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'waiters') return <WaitersScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'ai') return <AiScreen summary={summary} restaurantId={restaurantId} period={period} date={date} />;
@@ -2423,10 +2724,16 @@ export default function Page() {
       <div className="ambient one" />
       <div className="ambient two" />
       <div className="app-frame">
-        <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
-        <TopTabs tab={tab} setTab={setTab} />
-        <div className="content">{screen}</div>
-        {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
+        {shouldBlockDashboard(authInfo, settings) ? (
+          <div className="content no-access-only">{screen}</div>
+        ) : (
+          <>
+            <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
+            <TopTabs tab={tab} setTab={setTab} authInfo={authInfo} />
+            <div className="content">{screen}</div>
+            {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
+          </>
+        )}
       </div>
     </main>
   );
