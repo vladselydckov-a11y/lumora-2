@@ -903,7 +903,7 @@ function AiScreen({ summary, restaurantId, period, date }) {
     try {
       const response = await fetch('/api/ai-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
         body: JSON.stringify({ restaurant_id: restaurantId, question: q, period, date, history: next.slice(-6) })
       });
       const data = await response.json();
@@ -2583,6 +2583,23 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
           <div className="mini-card"><small>Доступы</small><b>готовы</b><p>роли и кабинеты разделены</p></div>
           <div className="mini-card"><small>Без доступа</small><b>закрыто</b><p>Telegram без роли не видит дашборд</p></div>
           <div className="mini-card"><small>Данные</small><b>не трогали</b><p>iiko/n8n/Supabase без изменений</p></div>
+        </div>
+      </Section>
+
+
+
+      <Section title="Защита данных API" subtitle="Stage 17: статистика и AI проверяют Telegram-доступ">
+        <div className="event-row good">
+          <span>⛨</span>
+          <div>
+            <b>/api/summary и /api/ai-chat закрыты для Telegram без доступа</b>
+            <p>Обычный пользователь в Mini App не сможет получить статистику или AI-ответы по ресторану. Браузерный dev-режим пока открыт, чтобы не запереть рабочий MVP.</p>
+          </div>
+        </div>
+        <div className="mini-grid">
+          <div className="mini-card"><small>Mini App</small><b>защищён</b><p>проверка по Telegram initData</p></div>
+          <div className="mini-card"><small>Рестораны</small><b>по доступу</b><p>чужой restaurant_id не отдаётся</p></div>
+          <div className="mini-card"><small>AI</small><b>по роли</b><p>раздел Lumora AI проверяет права</p></div>
         </div>
       </Section>
 
