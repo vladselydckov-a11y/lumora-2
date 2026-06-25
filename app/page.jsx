@@ -1250,18 +1250,26 @@ function isTelegramAccessMode(authInfo) {
   return authInfo?.mode === 'telegram';
 }
 
+function telegramAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const initData = window.Telegram?.WebApp?.initData || '';
+  return initData ? { Authorization: `tma ${initData}` } : {};
+}
+
 function canUseAllRestaurants(authInfo) {
   const allowedIds = getAllowedRestaurantIds(authInfo);
   if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
   return allowedIds.length >= 2;
 }
 
 function filterRestaurantsByAccess(restaurants, authInfo) {
   const list = Array.isArray(restaurants) ? restaurants : [];
   if (!isTelegramAccessMode(authInfo)) return list;
+  if (isPlatformOwnerUser(authInfo)) return list;
 
   const allowedIds = getAllowedRestaurantIds(authInfo);
-  if (!allowedIds.length) return list;
+  if (!allowedIds.length) return [];
 
   return list.filter((item) => allowedIds.includes(item.id));
 }
@@ -1324,6 +1332,12 @@ function getBusinessCabinetBusinesses(authInfo) {
 function getBusinessCabinetUsers(authInfo) {
   const platform = getPlatformInfo(authInfo);
   return Array.isArray(platform?.businessUsers) ? platform.businessUsers : [];
+}
+
+function canManageAccessCabinet(authInfo) {
+  if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
+  return getBusinessCabinetUsers(authInfo).some((item) => ['business_owner', 'business_admin'].includes(item.role));
 }
 
 function getAccessModeTitle(authInfo) {
@@ -1425,7 +1439,7 @@ function ClientBusinessCabinetBlock({ authInfo }) {
 }
 
 
-function PlatformAdminBlock() {
+function PlatformAdminBlock({ authInfo }) {
   const [adminKey, setAdminKey] = useState('');
   const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], access: [], invites: [] });
   const [loading, setLoading] = useState(false);
@@ -1462,6 +1476,8 @@ function PlatformAdminBlock() {
   const businessUsers = Array.isArray(data.business_users) ? data.business_users : [];
   const access = Array.isArray(data.access) ? data.access : [];
   const invites = Array.isArray(data.invites) ? data.invites : [];
+  const canLoadWithTelegram = isTelegramAccessMode(authInfo) && isPlatformOwnerUser(authInfo);
+  const hasPlatformGate = canLoadWithTelegram || Boolean(adminKey.trim());
 
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId) || businesses[0] || null;
   const selectedBusinessRestaurants = Array.isArray(selectedBusiness?.restaurants) ? selectedBusiness.restaurants : [];
@@ -1515,17 +1531,18 @@ function PlatformAdminBlock() {
   }
 
   async function callPlatform(payload = {}, successText = 'Готово') {
-    if (!adminKey.trim()) {
-      setMessage('Вставь ACCESS_ADMIN_KEY, чтобы открыть кабинет владельца платформы.');
+    if (!hasPlatformGate) {
+      setMessage('Открой Mini App как владелец платформы или вставь ACCESS_ADMIN_KEY.');
       return null;
     }
     setLoading(true);
     setMessage('');
     try {
+      const body = canLoadWithTelegram ? payload : { admin_key: adminKey.trim(), ...payload };
       const response = await fetch('/api/platform/businesses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_key: adminKey.trim(), ...payload })
+        headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
+        body: JSON.stringify(body)
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Не удалось выполнить действие');
@@ -1541,24 +1558,33 @@ function PlatformAdminBlock() {
   }
 
   async function loadPlatform() {
-    if (!adminKey.trim()) {
-      setMessage('Вставь ACCESS_ADMIN_KEY, чтобы открыть кабинет владельца платформы.');
+    if (!hasPlatformGate) {
+      setMessage('Открой Mini App как владелец платформы или вставь ACCESS_ADMIN_KEY.');
       return;
     }
     setLoading(true);
     setMessage('');
     try {
-      const response = await fetch(`/api/platform/businesses?admin_key=${encodeURIComponent(adminKey.trim())}&t=${Date.now()}`, { cache: 'no-store' });
+      const url = canLoadWithTelegram
+        ? `/api/platform/businesses?t=${Date.now()}`
+        : `/api/platform/businesses?admin_key=${encodeURIComponent(adminKey.trim())}&t=${Date.now()}`;
+      const response = await fetch(url, { cache: 'no-store', headers: telegramAuthHeaders() });
       const next = await response.json();
       if (!next.ok) throw new Error(next.error || 'Не удалось загрузить кабинет платформы');
       setData(next);
-      setMessage('Кабинет платформы загружен.');
+      setMessage(canLoadWithTelegram ? 'Кабинет платформы загружен по Telegram-роли.' : 'Кабинет платформы загружен.');
     } catch (error) {
       setMessage(error.message || 'Ошибка загрузки кабинета платформы.');
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (canLoadWithTelegram && !businesses.length && !loading) {
+      loadPlatform();
+    }
+  }, [canLoadWithTelegram]);
 
   function toggleRestaurant(restaurantId, setter = setSelectedRestaurantIds) {
     setter((current) => current.includes(restaurantId)
@@ -1669,11 +1695,18 @@ function PlatformAdminBlock() {
 
   return (
     <Section title="Кабинет платформы" subtitle="твой внутренний экран владельца КЛИК: клиенты, рестораны, подписки, владельцы и доступы">
-      <label>
-        <span>Админ-ключ платформы</span>
-        <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
-      </label>
-      <button className="primary-btn" onClick={loadPlatform} disabled={loading}>{loading ? 'Загружаю…' : 'Загрузить кабинет платформы'}</button>
+      {canLoadWithTelegram ? (
+        <div className="control-row">
+          <div><b>Доступ владельца платформы активен</b><p>Кабинет загружается по Telegram ID, ключ в интерфейсе не нужен.</p></div>
+          <span>@{authInfo?.user?.username || 'telegram'}</span>
+        </div>
+      ) : (
+        <label>
+          <span>Админ-ключ платформы</span>
+          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
+        </label>
+      )}
+      <button className="primary-btn" onClick={loadPlatform} disabled={loading || !hasPlatformGate}>{loading ? 'Загружаю…' : 'Загрузить кабинет платформы'}</button>
       {message ? <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>{message}</p> : null}
 
       <div className="mini-grid" style={{ marginTop: 16 }}>
@@ -1854,7 +1887,7 @@ function PlatformAdminBlock() {
           <div className="control-row" key={`pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · id: {restaurant.id}</p></div><input type="checkbox" checked={selectedRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id)} /></div>
         ))}</div> : null}
         <label><span>Заметка</span><textarea value={newBusinessNotes} onChange={(e) => setNewBusinessNotes(e.target.value)} placeholder="Например: оплатил пилот, iiko подключить позже" rows={3} /></label>
-        <button className="primary-btn" onClick={addBusiness} disabled={loading || !adminKey.trim()}>Добавить бизнес</button>
+        <button className="primary-btn" onClick={addBusiness} disabled={loading || !hasPlatformGate}>Добавить бизнес</button>
       </div>
     </Section>
   );
@@ -2130,9 +2163,15 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
       </Section>
 
       <AccessModeBlock authInfo={authInfo} />
-      {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock /> : null}
+      {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
       <ClientBusinessCabinetBlock authInfo={authInfo} />
-      <AccessAdminBlock summary={summary} authInfo={authInfo} />
+      {canManageAccessCabinet(authInfo) ? (
+        <AccessAdminBlock summary={summary} authInfo={authInfo} />
+      ) : (
+        <Section title="Доступы" subtitle="управление сотрудниками">
+          <EmptyState title="Управление сотрудниками недоступно" text="Текущая роль может смотреть аналитику, но не выдавать доступы. Для добавления сотрудника нужен владелец или администратор бизнеса." />
+        </Section>
+      )}
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
         {['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'].map((key) => {
