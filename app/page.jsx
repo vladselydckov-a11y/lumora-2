@@ -1294,13 +1294,16 @@ function businessRestaurantsText(business) {
   return restaurants.map((item) => item.name || item.id).join(', ');
 }
 
+
 function PlatformAdminBlock() {
   const [adminKey, setAdminKey] = useState('');
-  const [data, setData] = useState({ businesses: [], restaurants: [], admins: [] });
+  const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], access: [], invites: [] });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [tab, setTab] = useState('clients');
+  const [tab, setTab] = useState('overview');
   const [selectedBusinessId, setSelectedBusinessId] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+
   const [newBusinessName, setNewBusinessName] = useState('');
   const [newBusinessCity, setNewBusinessCity] = useState('Тюмень');
   const [newOwnerUsername, setNewOwnerUsername] = useState('');
@@ -1310,13 +1313,49 @@ function PlatformAdminBlock() {
   const [newBusinessNotes, setNewBusinessNotes] = useState('');
   const [selectedRestaurantIds, setSelectedRestaurantIds] = useState([]);
 
+  const [ownerUsername, setOwnerUsername] = useState('');
+  const [ownerRole, setOwnerRole] = useState('business_owner');
+  const [ownerRestaurantIds, setOwnerRestaurantIds] = useState([]);
+
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState('paid');
+  const [paymentPlan, setPaymentPlan] = useState('pilot');
+  const [paymentNote, setPaymentNote] = useState('');
+
+  const [quickSubStatus, setQuickSubStatus] = useState('active');
+  const [quickBusinessStatus, setQuickBusinessStatus] = useState('active');
+
   const businesses = Array.isArray(data.businesses) ? data.businesses : [];
   const restaurants = Array.isArray(data.restaurants) ? data.restaurants : [];
   const admins = Array.isArray(data.admins) ? data.admins : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+  const businessUsers = Array.isArray(data.business_users) ? data.business_users : [];
+  const access = Array.isArray(data.access) ? data.access : [];
+  const invites = Array.isArray(data.invites) ? data.invites : [];
+
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId) || businesses[0] || null;
+  const selectedBusinessRestaurants = Array.isArray(selectedBusiness?.restaurants) ? selectedBusiness.restaurants : [];
+  const selectedBusinessRestaurantIds = selectedBusinessRestaurants.map((item) => item.id);
+  const selectedBusinessUsers = Array.isArray(selectedBusiness?.users) ? selectedBusiness.users : businessUsers.filter((item) => item.business_id === selectedBusiness?.id);
+  const selectedBusinessPayments = Array.isArray(selectedBusiness?.payments) ? selectedBusiness.payments : payments.filter((item) => item.business_id === selectedBusiness?.id);
+  const selectedBusinessAccess = access.filter((item) => selectedBusinessRestaurantIds.includes(item.restaurant_id));
+  const selectedBusinessInvites = invites.filter((item) => selectedBusinessRestaurantIds.includes(item.restaurant_id));
+
   const activeBusinesses = businesses.filter((item) => item.status === 'active').length;
   const paidBusinesses = businesses.filter((item) => item.subscription_status === 'active').length;
+  const trialBusinesses = businesses.filter((item) => item.subscription_status === 'trial').length;
   const overdueBusinesses = businesses.filter((item) => item.subscription_status === 'overdue').length;
+  const totalPaid = businesses.reduce((total, item) => total + Number(item.paid_total || 0), 0);
+  const pendingTotal = businesses.reduce((total, item) => total + Number(item.pending_total || 0), 0);
+
+  const filteredBusinesses = businesses.filter((business) => {
+    if (clientFilter === 'all') return true;
+    if (clientFilter === 'paid') return business.subscription_status === 'active';
+    if (clientFilter === 'trial') return business.subscription_status === 'trial';
+    if (clientFilter === 'overdue') return business.subscription_status === 'overdue';
+    if (clientFilter === 'paused') return business.status !== 'active';
+    return true;
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1328,9 +1367,47 @@ function PlatformAdminBlock() {
     if (!selectedBusinessId && businesses[0]?.id) setSelectedBusinessId(businesses[0].id);
   }, [businesses, selectedBusinessId]);
 
+  useEffect(() => {
+    if (selectedBusiness && !ownerRestaurantIds.length) {
+      setOwnerRestaurantIds(selectedBusinessRestaurantIds);
+    }
+    if (selectedBusiness) {
+      setQuickSubStatus(selectedBusiness.subscription_status || 'trial');
+      setQuickBusinessStatus(selectedBusiness.status || 'active');
+      setPaymentPlan(selectedBusiness.plan_name || 'pilot');
+      if (!ownerUsername && selectedBusiness.owner_username) setOwnerUsername(selectedBusiness.owner_username);
+    }
+  }, [selectedBusinessId, businesses.length]);
+
   function saveAdminKey(nextKey) {
     setAdminKey(nextKey);
     if (typeof window !== 'undefined') localStorage.setItem(ACCESS_ADMIN_STORAGE_KEY, nextKey);
+  }
+
+  async function callPlatform(payload = {}, successText = 'Готово') {
+    if (!adminKey.trim()) {
+      setMessage('Вставь ACCESS_ADMIN_KEY, чтобы открыть кабинет владельца платформы.');
+      return null;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/platform/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_key: adminKey.trim(), ...payload })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось выполнить действие');
+      setData(result);
+      setMessage(successText);
+      return result;
+    } catch (error) {
+      setMessage(error.message || 'Ошибка кабинета платформы.');
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadPlatform() {
@@ -1353,58 +1430,115 @@ function PlatformAdminBlock() {
     }
   }
 
-  function toggleRestaurant(restaurantId) {
-    setSelectedRestaurantIds((current) => current.includes(restaurantId)
+  function toggleRestaurant(restaurantId, setter = setSelectedRestaurantIds) {
+    setter((current) => current.includes(restaurantId)
       ? current.filter((item) => item !== restaurantId)
       : [...current, restaurantId]);
   }
 
   async function addBusiness() {
     const name = newBusinessName.trim();
-    if (!adminKey.trim()) {
-      setMessage('Сначала вставь ACCESS_ADMIN_KEY.');
-      return;
-    }
     if (!name) {
       setMessage('Введи название бизнеса клиента.');
       return;
     }
-    setLoading(true);
-    setMessage('');
-    try {
-      const response = await fetch('/api/platform/businesses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          admin_key: adminKey.trim(),
-          name,
-          city: newBusinessCity.trim() || 'Тюмень',
-          owner_username: normalizeInputUsername(newOwnerUsername),
-          plan_name: newPlanName.trim() || 'pilot',
-          status: newBusinessStatus,
-          subscription_status: newSubscriptionStatus,
-          notes: newBusinessNotes.trim(),
-          restaurant_ids: selectedRestaurantIds
-        })
-      });
-      const result = await response.json();
-      if (!result.ok) throw new Error(result.error || 'Не удалось добавить бизнес');
-      setData({ businesses: result.businesses || [], restaurants: result.restaurants || [], admins: result.admins || [] });
+    const result = await callPlatform({
+      action: 'upsert_business',
+      name,
+      city: newBusinessCity.trim() || 'Тюмень',
+      owner_username: normalizeInputUsername(newOwnerUsername),
+      plan_name: newPlanName.trim() || 'pilot',
+      status: newBusinessStatus,
+      subscription_status: newSubscriptionStatus,
+      notes: newBusinessNotes.trim(),
+      restaurant_ids: selectedRestaurantIds
+    }, 'Бизнес добавлен или обновлён.');
+    if (result?.business?.id) {
       setNewBusinessName('');
       setNewOwnerUsername('');
       setNewBusinessNotes('');
       setSelectedRestaurantIds([]);
-      setSelectedBusinessId(result.business?.id || selectedBusinessId);
-      setMessage('Бизнес добавлен. Теперь к нему можно привязывать рестораны и владельца.');
-    } catch (error) {
-      setMessage(error.message || 'Ошибка добавления бизнеса.');
-    } finally {
-      setLoading(false);
+      setSelectedBusinessId(result.business.id);
+      setTab('business');
     }
   }
 
+  async function updateSelectedBusiness() {
+    if (!selectedBusiness) return;
+    await callPlatform({
+      action: 'update_business',
+      id: selectedBusiness.id,
+      name: selectedBusiness.name,
+      city: selectedBusiness.city || 'Тюмень',
+      owner_username: selectedBusiness.owner_username,
+      owner_telegram_id: selectedBusiness.owner_telegram_id,
+      plan_name: selectedBusiness.plan_name || 'pilot',
+      status: quickBusinessStatus,
+      subscription_status: quickSubStatus,
+      notes: selectedBusiness.notes || '',
+      restaurant_ids: selectedBusinessRestaurantIds
+    }, 'Статусы бизнеса обновлены.');
+  }
+
+  async function saveBusinessRestaurants() {
+    if (!selectedBusiness) return;
+    await callPlatform({
+      action: 'link_restaurants',
+      business_id: selectedBusiness.id,
+      restaurant_ids: selectedRestaurantIds.length ? selectedRestaurantIds : selectedBusinessRestaurantIds
+    }, 'Рестораны бизнеса обновлены.');
+  }
+
+  async function addOwnerOrUser() {
+    if (!selectedBusiness) return;
+    const username = normalizeInputUsername(ownerUsername);
+    if (!username) {
+      setMessage('Введи Telegram username владельца или сотрудника.');
+      return;
+    }
+    await callPlatform({
+      action: ownerRole === 'business_owner' ? 'assign_owner' : 'add_business_user',
+      business_id: selectedBusiness.id,
+      username,
+      business_role: ownerRole,
+      restaurant_role: ownerRole === 'business_owner' ? 'owner' : ownerRole === 'business_admin' ? 'admin' : ownerRole === 'accountant' ? 'viewer' : 'viewer',
+      restaurant_ids: ownerRestaurantIds.length ? ownerRestaurantIds : selectedBusinessRestaurantIds
+    }, 'Пользователь добавлен. После входа в Telegram Mini App доступ станет активным.');
+  }
+
+  async function addPayment() {
+    if (!selectedBusiness) return;
+    const amount = Number(paymentAmount || 0);
+    if (!amount) {
+      setMessage('Введи сумму платежа.');
+      return;
+    }
+    const result = await callPlatform({
+      action: 'add_payment',
+      business_id: selectedBusiness.id,
+      amount,
+      currency: 'RUB',
+      status: paymentStatus,
+      plan_name: paymentPlan,
+      notes: paymentNote.trim()
+    }, 'Платёж добавлен в кабинет платформы.');
+    if (result?.ok) {
+      setPaymentAmount('');
+      setPaymentNote('');
+      setTab('subscriptions');
+    }
+  }
+
+  function openBusiness(business) {
+    setSelectedBusinessId(business.id);
+    setSelectedRestaurantIds((business.restaurants || []).map((item) => item.id));
+    setOwnerRestaurantIds((business.restaurants || []).map((item) => item.id));
+    setOwnerUsername(business.owner_username || '');
+    setTab('business');
+  }
+
   return (
-    <Section title="Кабинет платформы" subtitle="твой внутренний экран владельца КЛИК: клиенты, рестораны, подписки и владельцы">
+    <Section title="Кабинет платформы" subtitle="твой внутренний экран владельца КЛИК: клиенты, рестораны, подписки, владельцы и доступы">
       <label>
         <span>Админ-ключ платформы</span>
         <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
@@ -1414,40 +1548,113 @@ function PlatformAdminBlock() {
 
       <div className="mini-grid" style={{ marginTop: 16 }}>
         <div className="mini-card"><span>Клиенты</span><b>{businesses.length}</b><p>{activeBusinesses} активных</p></div>
-        <div className="mini-card"><span>Рестораны</span><b>{restaurants.length}</b><p>внутри платформы</p></div>
-        <div className="mini-card"><span>Оплачено</span><b>{paidBusinesses}</b><p>{overdueBusinesses ? `${overdueBusinesses} просрочено` : 'без просрочек'}</p></div>
+        <div className="mini-card"><span>Оплачено</span><b>{paidBusinesses}</b><p>{trialBusinesses} trial · {overdueBusinesses} просрочено</p></div>
+        <div className="mini-card"><span>Платежи</span><b>{money(totalPaid)}</b><p>{pendingTotal ? `${money(pendingTotal)} ожидается` : 'долгов не видно'}</p></div>
       </div>
 
       <div className="period-switch" style={{ marginTop: 16 }}>
+        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Обзор</button>
         <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Клиенты</button>
+        <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>Бизнес</button>
         <button className={tab === 'restaurants' ? 'active' : ''} onClick={() => setTab('restaurants')}>Рестораны</button>
         <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
         <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
       </div>
 
+      {tab === 'overview' ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="event-row neutral">
+            <span>🏦</span>
+            <div>
+              <b>КЛИК работает как платформа</b>
+              <p>Ты видишь все бизнесы. Ресторатор видит только свой бизнес. Сотрудник видит только назначенные точки.</p>
+            </div>
+          </div>
+          <div className="mini-grid" style={{ marginTop: 12 }}>
+            <div className="mini-card"><span>Все рестораны</span><b>{restaurants.length}</b><p>в базе платформы</p></div>
+            <div className="mini-card"><span>Активные доступы</span><b>{access.length}</b><p>{invites.length} ожидают входа</p></div>
+            <div className="mini-card"><span>Админы платформы</span><b>{admins.length}</b><p>внутренний доступ</p></div>
+          </div>
+          {selectedBusiness ? (
+            <div className="control-row" style={{ marginTop: 14 }}>
+              <div>
+                <b>{selectedBusiness.name}</b>
+                <p>{subscriptionStatusLabel(selectedBusiness.subscription_status)} · тариф {selectedBusiness.plan_name || 'pilot'} · {selectedBusiness.restaurants_count || 0} точек</p>
+              </div>
+              <button onClick={() => openBusiness(selectedBusiness)}>Открыть бизнес</button>
+            </div>
+          ) : <EmptyState title="Платформа пока не загружена" text="Нажми “Загрузить кабинет платформы”" />}
+        </div>
+      ) : null}
+
       {tab === 'clients' ? (
         <div style={{ marginTop: 14 }}>
-          {businesses.length ? businesses.map((business) => (
+          <div className="period-switch" style={{ marginBottom: 12 }}>
+            <button className={clientFilter === 'all' ? 'active' : ''} onClick={() => setClientFilter('all')}>Все</button>
+            <button className={clientFilter === 'paid' ? 'active' : ''} onClick={() => setClientFilter('paid')}>Оплачено</button>
+            <button className={clientFilter === 'trial' ? 'active' : ''} onClick={() => setClientFilter('trial')}>Trial</button>
+            <button className={clientFilter === 'overdue' ? 'active' : ''} onClick={() => setClientFilter('overdue')}>Просрочено</button>
+          </div>
+          {filteredBusinesses.length ? filteredBusinesses.map((business) => (
             <div className="control-row" key={business.id}>
               <div>
                 <b>{business.name}</b>
                 <p>{business.city || 'Город'} · {business.restaurants_count || 0} точек · @{business.owner_username || 'нет владельца'}</p>
+                <p>{subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'} · платежи {money(business.paid_total || 0)}</p>
               </div>
-              <button onClick={() => setSelectedBusinessId(business.id)}>Открыть</button>
+              <button onClick={() => openBusiness(business)}>Открыть</button>
             </div>
-          )) : <EmptyState title="Клиентов пока нет" text="Нажми “Загрузить кабинет платформы” или добавь новый бизнес." />}
+          )) : <EmptyState title="Клиентов пока нет" text="Загрузи кабинет или добавь новый бизнес." />}
+        </div>
+      ) : null}
 
+      {tab === 'business' ? (
+        <div style={{ marginTop: 14 }}>
           {selectedBusiness ? (
-            <div className="event-row neutral" style={{ marginTop: 12 }}>
-              <span>↳</span>
-              <div>
-                <b>{selectedBusiness.name}</b>
-                <p>Статус: {platformStatusLabel(selectedBusiness.status)} · подписка: {subscriptionStatusLabel(selectedBusiness.subscription_status)} · тариф: {selectedBusiness.plan_name || 'pilot'}</p>
-                <p>Рестораны: {businessRestaurantsText(selectedBusiness)}</p>
-                {selectedBusiness.notes ? <p>{selectedBusiness.notes}</p> : null}
+            <>
+              <div className="event-row good">
+                <span>↳</span>
+                <div>
+                  <b>{selectedBusiness.name}</b>
+                  <p>Статус бизнеса: {platformStatusLabel(selectedBusiness.status)} · подписка: {subscriptionStatusLabel(selectedBusiness.subscription_status)} · тариф: {selectedBusiness.plan_name || 'pilot'}</p>
+                  <p>Владелец: @{selectedBusiness.owner_username || 'не назначен'} · Рестораны: {businessRestaurantsText(selectedBusiness)}</p>
+                  {selectedBusiness.notes ? <p>{selectedBusiness.notes}</p> : null}
+                </div>
               </div>
-            </div>
-          ) : null}
+
+              <div className="mini-grid" style={{ marginTop: 12 }}>
+                <div className="mini-card"><span>Точки</span><b>{selectedBusiness.restaurants_count || 0}</b><p>{businessRestaurantsText(selectedBusiness)}</p></div>
+                <div className="mini-card"><span>Команда</span><b>{selectedBusiness.access_count || 0}</b><p>{selectedBusiness.invites_count || 0} ожидают входа</p></div>
+                <div className="mini-card"><span>Платежи</span><b>{money(selectedBusiness.paid_total || 0)}</b><p>{selectedBusiness.pending_total ? `${money(selectedBusiness.pending_total)} ожидается` : 'нет долга'}</p></div>
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <h3 style={{ margin: '0 0 10px' }}>Быстро изменить статус</h3>
+                <div className="control-row"><div><b>Подписка</b><p>для контроля оплаты клиента</p></div><select value={quickSubStatus} onChange={(e) => setQuickSubStatus(e.target.value)}><option value="trial">trial</option><option value="active">оплачено</option><option value="overdue">просрочено</option><option value="cancelled">отключено</option></select></div>
+                <div className="control-row"><div><b>Статус бизнеса</b><p>можно поставить на паузу</p></div><select value={quickBusinessStatus} onChange={(e) => setQuickBusinessStatus(e.target.value)}><option value="active">активен</option><option value="paused">пауза</option><option value="archived">архив</option></select></div>
+                <button className="primary-btn" onClick={updateSelectedBusiness} disabled={loading}>Сохранить статусы</button>
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <h3 style={{ margin: '0 0 10px' }}>Назначить владельца / пользователя бизнеса</h3>
+                <label><span>Telegram username</span><input value={ownerUsername} onChange={(e) => setOwnerUsername(e.target.value)} placeholder="@client_owner" /></label>
+                <div className="control-row"><div><b>Роль в бизнесе</b><p>владелец бизнеса или сотрудник</p></div><select value={ownerRole} onChange={(e) => setOwnerRole(e.target.value)}><option value="business_owner">владелец бизнеса</option><option value="business_admin">администратор бизнеса</option><option value="accountant">бухгалтер / финансы</option><option value="viewer">только просмотр</option></select></div>
+                {selectedBusinessRestaurants.length ? <div style={{ margin: '10px 0' }}><span style={{ color: 'var(--muted)', fontSize: 13 }}>Дать доступ к ресторанам</span>{selectedBusinessRestaurants.map((restaurant) => (
+                  <div className="control-row" key={`owner-pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · id: {restaurant.id}</p></div><input type="checkbox" checked={ownerRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id, setOwnerRestaurantIds)} /></div>
+                ))}</div> : null}
+                <button className="primary-btn" onClick={addOwnerOrUser} disabled={loading}>Добавить в бизнес и выдать доступ</button>
+              </div>
+
+              <div style={{ marginTop: 18 }}>
+                <h3 style={{ margin: '0 0 10px' }}>Добавить платёж / оплату</h3>
+                <label><span>Сумма</span><input value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="14900" inputMode="numeric" /></label>
+                <div className="control-row"><div><b>Статус платежа</b><p>для вкладки подписок</p></div><select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}><option value="paid">оплачено</option><option value="pending">ожидается</option><option value="overdue">просрочено</option><option value="cancelled">отменено</option><option value="refunded">возврат</option></select></div>
+                <div className="control-row"><div><b>Тариф</b><p>за что платёж</p></div><select value={paymentPlan} onChange={(e) => setPaymentPlan(e.target.value)}><option value="pilot">pilot</option><option value="basic">basic</option><option value="standard">standard</option><option value="network">network</option></select></div>
+                <label><span>Заметка</span><textarea value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} placeholder="Например: оплата за июль" rows={2} /></label>
+                <button className="primary-btn" onClick={addPayment} disabled={loading}>Добавить платёж</button>
+              </div>
+            </>
+          ) : <EmptyState title="Бизнес не выбран" text="Открой клиента во вкладке Клиенты." />}
         </div>
       ) : null}
 
@@ -1459,7 +1666,7 @@ function PlatformAdminBlock() {
               {(business.restaurants || []).length ? business.restaurants.map((restaurant) => (
                 <div className="control-row" key={`${business.id}-${restaurant.id}`}>
                   <div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || business.city || 'Город'} · id: {restaurant.id}</p></div>
-                  <span>{restaurant.is_active === false ? 'выкл.' : 'активен'}</span>
+                  <button onClick={() => openBusiness(business)}>Открыть бизнес</button>
                 </div>
               )) : <p style={{ color: 'var(--muted)', fontSize: 13 }}>Рестораны ещё не привязаны.</p>}
             </div>
@@ -1474,7 +1681,8 @@ function PlatformAdminBlock() {
               <span>{business.subscription_status === 'active' ? '✓' : business.subscription_status === 'overdue' ? '!' : '•'}</span>
               <div>
                 <b>{business.name}</b>
-                <p>{subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'} · статус бизнеса {platformStatusLabel(business.status)}</p>
+                <p>{subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'} · оплачено {money(business.paid_total || 0)} · ожидается {money(business.pending_total || 0)}</p>
+                {(business.payments || []).slice(0, 3).map((payment) => <p key={payment.id || `${business.id}-${payment.created_at}`}>Платёж: {money(payment.amount)} · {payment.status} · {payment.notes || payment.plan_name || 'без заметки'}</p>)}
               </div>
             </div>
           )) : <EmptyState title="Подписки не загружены" text="Сначала загрузи кабинет платформы." />}
@@ -1491,10 +1699,16 @@ function PlatformAdminBlock() {
           )) : null}
           {businesses.length ? businesses.map((business) => (
             <div className="control-row" key={`owner-${business.id}`}>
-              <div><b>@{business.owner_username || 'нет владельца'}</b><p>{business.name} · владелец бизнеса</p></div>
-              <span>{business.owner_telegram_id ? 'telegram_id есть' : 'ждёт привязки'}</span>
+              <div><b>@{business.owner_username || 'нет владельца'}</b><p>{business.name} · владелец бизнеса · {business.access_count || 0} активных доступов</p></div>
+              <button onClick={() => openBusiness(business)}>Открыть</button>
             </div>
           )) : <EmptyState title="Владельцы не загружены" text="Сначала загрузи кабинет платформы." />}
+          {businessUsers.length ? businessUsers.map((user) => (
+            <div className="control-row" key={user.id || `${user.business_id}-${user.username_normalized}`}>
+              <div><b>@{user.username_normalized || user.username || 'user'}</b><p>{user.business_id} · {user.role} · {user.status}</p></div>
+              <span>{user.telegram_id ? 'telegram_id есть' : 'ждёт входа'}</span>
+            </div>
+          )) : null}
         </div>
       ) : null}
 
