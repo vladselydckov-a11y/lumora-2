@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isFreshAuthDate, parseInitData, validateTelegramInitData } from '../../../../lib/telegram';
 import { assertAdminKey, cleanRole, normalizeUsername } from '../../../../lib/accessServer';
 import { supabaseFetch } from '../../../../lib/supabaseServer';
 
@@ -45,6 +46,46 @@ function unique(values = []) {
 
 function encode(value) {
   return encodeURIComponent(String(value || ''));
+}
+
+function getTelegramInitData(request) {
+  const authHeader = request.headers.get('authorization') || '';
+  const [, initData] = authHeader.match(/^tma\s+(.+)$/i) || [];
+  return initData || '';
+}
+
+async function assertPlatformAccess(request, body = {}) {
+  const adminGate = assertAdminKey(request, body);
+  if (adminGate.ok) return { ...adminGate, mode: 'admin_key' };
+
+  const initData = getTelegramInitData(request);
+  if (!initData) return adminGate;
+
+  const parsed = parseInitData(initData);
+  const valid = validateTelegramInitData(initData, process.env.BOT_TOKEN);
+  const fresh = isFreshAuthDate(parsed.authDate);
+  const user = parsed.user || {};
+
+  if (!valid || !fresh || !user.id) {
+    return { ok: false, error: 'Invalid Telegram platform auth', status: 401 };
+  }
+
+  const telegramId = String(user.id);
+  const username = normalizeUsername(user.username);
+
+  const [byTelegram, byUsername] = await Promise.all([
+    supabaseFetch(`/rest/v1/platform_admins?select=telegram_id,username,role,status&telegram_id=eq.${encode(telegramId)}&status=eq.active`).catch(() => []),
+    username ? supabaseFetch(`/rest/v1/platform_admins?select=telegram_id,username,role,status&username=eq.${encode(username)}&status=eq.active`).catch(() => []) : Promise.resolve([])
+  ]);
+
+  const admins = [...(Array.isArray(byTelegram) ? byTelegram : []), ...(Array.isArray(byUsername) ? byUsername : [])];
+  const admin = admins.find((item) => ['platform_owner', 'platform_admin'].includes(item.role));
+
+  if (!admin) {
+    return { ok: false, error: 'Platform owner access required', status: 403 };
+  }
+
+  return { ok: true, mode: 'telegram_platform_owner', user, admin };
 }
 
 function businessPayloadFromBody(body, id) {
@@ -299,16 +340,16 @@ async function addBusinessUser(body) {
 }
 
 export async function GET(request) {
-  const gate = assertAdminKey(request);
+  const gate = await assertPlatformAccess(request);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
 
   const data = await getPlatformData();
-  return NextResponse.json({ ok: true, ...data });
+  return NextResponse.json({ ok: true, auth_mode: gate.mode, ...data });
 }
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
-  const gate = assertAdminKey(request, body);
+  const gate = await assertPlatformAccess(request, body);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
 
   const action = String(body.action || body.mode || 'upsert_business').trim();
@@ -331,7 +372,7 @@ export async function POST(request) {
     }
 
     const data = await getPlatformData();
-    return NextResponse.json({ ok: true, action, ...result, ...data });
+    return NextResponse.json({ ok: true, auth_mode: gate.mode, action, ...result, ...data });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error.message || 'Platform action failed' }, { status: 400 });
   }
