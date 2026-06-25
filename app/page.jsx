@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'lumora_settings_v10_access_policy';
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v11_access_guard';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   discountLimit: 9000,
   autoRefresh: true,
   compactMode: false,
+  hardAccessProtection: false,
   showFoodcostCard: false,
   aiTone: 'Управленческий',
   visible: {
@@ -1357,6 +1358,58 @@ function accessPolicyText(authInfo) {
   return 'Пока доступ не выдан. В финальном режиме такой пользователь увидит экран запроса доступа.';
 }
 
+
+function shouldBlockDashboard(authInfo, settings) {
+  if (!settings?.hardAccessProtection) return false;
+  if (!isTelegramAccessMode(authInfo)) return false;
+  if (isPlatformOwnerUser(authInfo)) return false;
+  if (getBusinessCabinetBusinesses(authInfo).length) return false;
+  if (getActiveAccess(authInfo).length) return false;
+  return true;
+}
+
+function NoAccessScreen({ authInfo }) {
+  const user = authInfo?.user || {};
+  return (
+    <div className="screen-stack">
+      <Section title="Доступ не выдан" subtitle="экран для пользователей без роли">
+        <div className="event-row bad">
+          <span>!</span>
+          <div>
+            <b>Этот аккаунт пока не привязан к ресторану</b>
+            <p>{isTelegramAccessMode(authInfo) ? `Telegram: @${user.username || 'без username'} · ID ${user.id || '—'}` : 'Открой приложение из Telegram Mini App, чтобы система увидела аккаунт.'}</p>
+          </div>
+        </div>
+        <p className="muted-line">Владелец бизнеса должен добавить сотрудника в разделе “Управление → Доступы”. Для тестов dev-режим в браузере не блокируется.</p>
+      </Section>
+    </div>
+  );
+}
+
+function AccessGuardSettingsBlock({ settings, update, authInfo }) {
+  const enabled = Boolean(settings.hardAccessProtection);
+  const wouldBlock = shouldBlockDashboard(authInfo, { ...settings, hardAccessProtection: true });
+  return (
+    <Section title="Финальная защита доступа" subtitle="пока можно включать только после проверки ролей">
+      <div className={`event-row ${enabled ? 'warn' : 'good'}`}>
+        <span>{enabled ? '!' : '✓'}</span>
+        <div>
+          <b>{enabled ? 'Жёсткая защита включена' : 'Жёсткая защита выключена'}</b>
+          <p>{enabled ? 'Пользователь без роли увидит экран “Доступ не выдан”.' : 'Сейчас доступы работают мягко: роли видны, но рабочий MVP не блокируется.'}</p>
+        </div>
+      </div>
+      <div className="control-row">
+        <div>
+          <b>Блокировать пользователей без доступа</b>
+          <p>{wouldBlock ? 'Текущий Telegram-пользователь без доступа был бы заблокирован.' : 'Текущий пользователь проходит проверку или открыт dev-режим.'}</p>
+        </div>
+        <input type="checkbox" checked={enabled} onChange={(e) => update('hardAccessProtection', e.target.checked)} />
+      </div>
+      <p className="muted-line">Для показа клиенту лучше держать выключенным. Включим после теста с отдельным сотрудником и аккаунтом без доступа.</p>
+    </Section>
+  );
+}
+
 function SoftAccessPolicyBlock({ authInfo }) {
   const activeAccess = getActiveAccess(authInfo);
   const businesses = getBusinessCabinetBusinesses(authInfo);
@@ -2204,6 +2257,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
 
       <AccessModeBlock authInfo={authInfo} />
       <SoftAccessPolicyBlock authInfo={authInfo} />
+      <AccessGuardSettingsBlock settings={settings} update={update} authInfo={authInfo} />
       {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
       <ClientBusinessCabinetBlock authInfo={authInfo} />
       {canManageAccessCabinet(authInfo) ? (
@@ -2316,6 +2370,7 @@ export default function Page() {
   const screen = useMemo(() => {
     if (loading) return <div className="loading"><span />Загружаем Lumora…</div>;
     if (error) return <div className="loading error"><p>{error}</p><button onClick={loadSummary}>Повторить</button></div>;
+    if (shouldBlockDashboard(authInfo, settings) && tab !== 'control') return <NoAccessScreen authInfo={authInfo} />;
     if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'waiters') return <WaitersScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'ai') return <AiScreen summary={summary} restaurantId={restaurantId} period={period} date={date} />;
