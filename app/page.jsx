@@ -1591,7 +1591,7 @@ function AccessModeBlock({ authInfo }) {
   );
 }
 
-function ClientBusinessCabinetBlock({ authInfo }) {
+function ClientBusinessCabinetBlock({ authInfo, openRestaurantDashboard }) {
   const businesses = getBusinessCabinetBusinesses(authInfo);
   const businessUsers = getBusinessCabinetUsers(authInfo);
   const activeAccess = getActiveAccess(authInfo);
@@ -1635,6 +1635,13 @@ function ClientBusinessCabinetBlock({ authInfo }) {
               </div>
               <p className="muted-line">Рестораны: {businessRestaurantsText(business)}</p>
               <p className="muted-line">Владелец: {business.owner_username ? `@${normalizeInputUsername(business.owner_username)}` : 'не назначен'}</p>
+              {restaurants.length ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  {restaurants.map((restaurant) => (
+                    <button key={`client-open-${business.id}-${restaurant.id}`} onClick={() => openRestaurantDashboard?.(restaurant.id, 'today')}>Открыть {restaurant.name || restaurant.id}</button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -1848,7 +1855,7 @@ function BusinessTeamManager({ authInfo }) {
 }
 
 
-function PlatformAdminBlock({ authInfo }) {
+function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const [adminKey, setAdminKey] = useState('');
   const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], access: [], invites: [] });
   const [loading, setLoading] = useState(false);
@@ -2238,7 +2245,10 @@ function PlatformAdminBlock({ authInfo }) {
               {(business.restaurants || []).length ? business.restaurants.map((restaurant) => (
                 <div className="control-row" key={`${business.id}-${restaurant.id}`}>
                   <div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || business.city || 'Город'} · id: {restaurant.id}</p></div>
-                  <button onClick={() => openBusiness(business)}>Открыть бизнес</button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                    <button onClick={() => openBusiness(business)}>Открыть бизнес</button>
+                    <button onClick={() => openRestaurantDashboard?.(restaurant.id, 'today')}>Дашборд</button>
+                  </div>
                 </div>
               )) : <p style={{ color: 'var(--muted)', fontSize: 13 }}>Рестораны ещё не привязаны.</p>}
             </div>
@@ -2717,14 +2727,27 @@ export default function Page() {
     return () => clearInterval(id);
   }, [settings.autoRefresh, restaurantId, period, date]);
 
+  function openRestaurantDashboard(nextRestaurantId, nextTab = 'today') {
+    if (!nextRestaurantId) return;
+    setRestaurantId(nextRestaurantId);
+    setPeriod('day');
+    setTab(nextTab || 'today');
+    setLoading(true);
+  }
+
+  const viewingRestaurantName = useMemo(() => {
+    if (!restaurantId || restaurantId === 'all') return 'Вся доступная сеть';
+    return restaurants.find((item) => item.id === restaurantId)?.name || restaurantId;
+  }, [restaurantId, restaurants]);
+
   const screen = useMemo(() => {
     if (loading) return <div className="loading"><span />Загружаем Lumora…</div>;
     if (error) return <div className="loading error"><p>{error}</p><button onClick={loadSummary}>Повторить</button></div>;
     if (shouldBlockDashboard(authInfo, settings)) return <NoAccessScreen authInfo={authInfo} />;
     const visibleTabs = getVisibleTabs(authInfo);
     if (visibleTabs.length && !visibleTabs.some((item) => item.id === tab)) return <div className="loading"><span />Настраиваем доступ…</div>;
-    if (tab === 'platform') return <PlatformAdminBlock authInfo={authInfo} />;
-    if (tab === 'client') return <ClientBusinessCabinetBlock authInfo={authInfo} />;
+    if (tab === 'platform') return <PlatformAdminBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
+    if (tab === 'client') return <ClientBusinessCabinetBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
     if (tab !== 'control' && !canSeeSection(authInfo, tab)) return <NoAccessScreen authInfo={authInfo} />;
     if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'waiters') return <WaitersScreen summary={summary} period={period} setPeriod={setPeriod} />;
@@ -2747,6 +2770,15 @@ export default function Page() {
           <>
             <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
             <TopTabs tab={tab} setTab={setTab} authInfo={authInfo} />
+            {(isPlatformOwnerUser(authInfo) || getBusinessCabinetBusinesses(authInfo).length) && tab !== 'platform' ? (
+              <div style={{ margin: '0 18px 12px', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 18, background: 'var(--panel-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <div>
+                  <small>{isPlatformOwnerUser(authInfo) ? 'Режим владельца платформы' : 'Кабинет клиента'}</small>
+                  <b>Открыт дашборд: {viewingRestaurantName}</b>
+                </div>
+                {isPlatformOwnerUser(authInfo) ? <button onClick={() => setTab('platform')}>Кабинет платформы</button> : <button onClick={() => setTab('client')}>Мой бизнес</button>}
+              </div>
+            ) : null}
             <div className="content">{screen}</div>
             {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
           </>
