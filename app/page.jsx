@@ -1238,7 +1238,7 @@ function normalizeInputUsername(value) {
   return String(value || '').trim().replace(/^@+/, '').toLowerCase();
 }
 
-function AccessAdminBlock({ summary }) {
+function AccessAdminBlock({ summary, authInfo }) {
   const [adminKey, setAdminKey] = useState('');
   const [data, setData] = useState({ access: [], invites: [], restaurants: [] });
   const [loading, setLoading] = useState(false);
@@ -1379,6 +1379,23 @@ function AccessAdminBlock({ summary }) {
         </p>
       </Section>
 
+      <Section title="Мой доступ" subtitle="автоматическая привязка после входа через Telegram">
+        {authInfo?.mode === 'telegram' ? (
+          <>
+            <div className="control-row"><div><b>@{authInfo?.user?.username || 'без username'}</b><p>Telegram ID: {authInfo?.user?.id || '—'}</p></div><span>{authInfo?.access?.length ? 'активен' : 'нет активного доступа'}</span></div>
+            {(authInfo?.acceptedInvites || []).length ? <p style={{ margin: '10px 0 0', color: 'var(--ok)', fontSize: 13 }}>Приглашение принято, доступ активирован.</p> : null}
+            {(authInfo?.access || []).length ? authInfo.access.map((item) => (
+              <div className="control-row" key={item.id || `${item.restaurant_id}-${item.role}`}>
+                <div><b>{item.restaurant?.name || item.restaurant_id}</b><p>{roleLabel(item.role)} · доступ активен</p></div>
+                <span>{item.status || 'active'}</span>
+              </div>
+            )) : <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>Если username есть в приглашениях, открой Mini App из Telegram, и доступ привяжется автоматически.</p>}
+          </>
+        ) : (
+          <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13, lineHeight: 1.5 }}>В браузере доступ не привязывается. Для активации сотрудник должен открыть Mini App из Telegram.</p>
+        )}
+      </Section>
+
       <Section title="Добавить сотрудника" subtitle="внешне через @username, технически позже привяжем telegram_id">
         <label>
           <span>Ресторан</span>
@@ -1453,7 +1470,7 @@ function AccessAdminBlock({ summary }) {
   );
 }
 
-function ControlScreen({ settings, setSettings, summary, reload }) {
+function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
   const [saved, setSaved] = useState(false);
 
   function update(key, value) {
@@ -1490,7 +1507,7 @@ function ControlScreen({ settings, setSettings, summary, reload }) {
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
       </Section>
 
-      <AccessAdminBlock summary={summary} />
+      <AccessAdminBlock summary={summary} authInfo={authInfo} />
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
         {['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'].map((key) => {
@@ -1527,8 +1544,21 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [authInfo, setAuthInfo] = useState(null);
 
   const restaurants = summary?.network?.restaurants || [];
+
+  async function loadAuth() {
+    try {
+      const initData = window.Telegram?.WebApp?.initData || '';
+      const headers = initData ? { Authorization: `tma ${initData}` } : {};
+      const response = await fetch('/api/auth', { method: 'POST', headers, cache: 'no-store' });
+      const data = await response.json();
+      setAuthInfo(data);
+    } catch {
+      setAuthInfo({ ok: false, mode: 'auth-error' });
+    }
+  }
 
   async function loadSummary() {
     try {
@@ -1549,6 +1579,7 @@ export default function Page() {
     saveSettings(next);
     window.Telegram?.WebApp?.ready?.();
     window.Telegram?.WebApp?.expand?.();
+    loadAuth();
   }, []);
 
   useEffect(() => { loadSummary(); }, [restaurantId, period, date]);
@@ -1568,9 +1599,9 @@ export default function Page() {
     if (tab === 'analytics') return <AnalyticsScreen summary={summary} />;
     if (tab === 'plan') return <PlanScreen summary={summary} settings={settings} />;
     if (tab === 'risks') return <RisksScreen summary={summary} />;
-    if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} summary={summary} reload={loadSummary} />;
+    if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} summary={summary} reload={loadSummary} authInfo={authInfo} />;
     return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} />;
-  }, [tab, summary, loading, error, period, settings, restaurantId, date]);
+  }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo]);
 
   return (
     <main className="lumora-shell">
