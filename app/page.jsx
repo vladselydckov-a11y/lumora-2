@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const SETTINGS_STORAGE_KEY = 'lumora_settings_v12_client_polish';
+const SETTINGS_STORAGE_KEY = 'lumora_settings_v13_presentation_mode';
 
 const DEFAULT_SETTINGS = {
   theme: 'light',
@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   autoRefresh: true,
   compactMode: false,
   hardAccessProtection: false,
+  presentationMode: false,
   showFoodcostCard: false,
   aiTone: 'Управленческий',
   visible: {
@@ -2253,6 +2254,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Акцент</b><p>Золото или синий</p></div><select value={settings.accent} onChange={(e) => update('accent', e.target.value)}><option value="gold">Золото</option><option value="blue">Синий</option></select></div>
         <div className="control-row"><div><b>Фудкост</b><p>Включать только после себестоимости iiko</p></div><input type="checkbox" checked={settings.showFoodcostCard} onChange={(e) => update('showFoodcostCard', e.target.checked)} /></div>
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
+        <div className="control-row"><div><b>Режим показа клиенту</b><p>Скрывает внутренние блоки доступов, платформы и тестовые формы в Управлении.</p></div><input type="checkbox" checked={Boolean(settings.presentationMode)} onChange={(e) => update('presentationMode', e.target.checked)} /></div>
       </Section>
 
       <Section title="Готовность к показу" subtitle="клиентский вид без лишней технички">
@@ -2270,17 +2272,37 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         </div>
       </Section>
 
-      <AccessModeBlock authInfo={authInfo} />
-      <SoftAccessPolicyBlock authInfo={authInfo} />
-      <AccessGuardSettingsBlock settings={settings} update={update} authInfo={authInfo} />
-      {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
-      <ClientBusinessCabinetBlock authInfo={authInfo} />
-      {canManageAccessCabinet(authInfo) ? (
-        <AccessAdminBlock summary={summary} authInfo={authInfo} />
-      ) : (
-        <Section title="Доступы" subtitle="управление сотрудниками">
-          <EmptyState title="Управление сотрудниками недоступно" text="Текущая роль может смотреть аналитику, но не выдавать доступы. Для добавления сотрудника нужен владелец или администратор бизнеса." />
+      {settings.presentationMode ? (
+        <Section title="Режим показа клиенту включён" subtitle="внутренняя техничка скрыта из управления">
+          <div className="event-row good">
+            <span>✓</span>
+            <div>
+              <b>Можно показывать основной дашборд без админских форм</b>
+              <p>Кабинет платформы, выдача доступов, защита ролей и служебные блоки остаются в коде, но не отвлекают в клиентском режиме.</p>
+            </div>
+          </div>
+          <div className="mini-grid">
+            <div className="mini-card"><small>Показ</small><b>чистый</b><p>без лишних форм</p></div>
+            <div className="mini-card"><small>Данные</small><b>реальные</b><p>iiko/Supabase не тронуты</p></div>
+            <div className="mini-card"><small>Доступы</small><b>на месте</b><p>можно вернуть выключателем</p></div>
+          </div>
+          <p className="muted-line">Чтобы вернуть админские блоки, выключи “Режим показа клиенту” в блоке “Внешний вид”.</p>
         </Section>
+      ) : (
+        <>
+          <AccessModeBlock authInfo={authInfo} />
+          <SoftAccessPolicyBlock authInfo={authInfo} />
+          <AccessGuardSettingsBlock settings={settings} update={update} authInfo={authInfo} />
+          {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
+          <ClientBusinessCabinetBlock authInfo={authInfo} />
+          {canManageAccessCabinet(authInfo) ? (
+            <AccessAdminBlock summary={summary} authInfo={authInfo} />
+          ) : (
+            <Section title="Доступы" subtitle="управление сотрудниками">
+              <EmptyState title="Управление сотрудниками недоступно" text="Текущая роль может смотреть аналитику, но не выдавать доступы. Для добавления сотрудника нужен владелец или администратор бизнеса." />
+            </Section>
+          )}
+        </>
       )}
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
