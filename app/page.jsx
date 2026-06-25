@@ -1270,6 +1270,252 @@ function normalizeInputUsername(value) {
   return String(value || '').trim().replace(/^@+/, '').toLowerCase();
 }
 
+
+function platformStatusLabel(value) {
+  const map = { active: 'Активен', paused: 'Пауза', archived: 'Архив' };
+  return map[value] || value || 'Активен';
+}
+
+function subscriptionStatusLabel(value) {
+  const map = { trial: 'Trial', active: 'Оплачено', overdue: 'Просрочено', cancelled: 'Отключено' };
+  return map[value] || value || 'Trial';
+}
+
+function subscriptionTone(value) {
+  if (value === 'active') return 'good';
+  if (value === 'overdue' || value === 'cancelled') return 'bad';
+  if (value === 'trial') return 'warn';
+  return 'neutral';
+}
+
+function businessRestaurantsText(business) {
+  const restaurants = Array.isArray(business?.restaurants) ? business.restaurants : [];
+  if (!restaurants.length) return 'Рестораны пока не привязаны';
+  return restaurants.map((item) => item.name || item.id).join(', ');
+}
+
+function PlatformAdminBlock() {
+  const [adminKey, setAdminKey] = useState('');
+  const [data, setData] = useState({ businesses: [], restaurants: [], admins: [] });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [tab, setTab] = useState('clients');
+  const [selectedBusinessId, setSelectedBusinessId] = useState('');
+  const [newBusinessName, setNewBusinessName] = useState('');
+  const [newBusinessCity, setNewBusinessCity] = useState('Тюмень');
+  const [newOwnerUsername, setNewOwnerUsername] = useState('');
+  const [newPlanName, setNewPlanName] = useState('pilot');
+  const [newSubscriptionStatus, setNewSubscriptionStatus] = useState('trial');
+  const [newBusinessStatus, setNewBusinessStatus] = useState('active');
+  const [newBusinessNotes, setNewBusinessNotes] = useState('');
+  const [selectedRestaurantIds, setSelectedRestaurantIds] = useState([]);
+
+  const businesses = Array.isArray(data.businesses) ? data.businesses : [];
+  const restaurants = Array.isArray(data.restaurants) ? data.restaurants : [];
+  const admins = Array.isArray(data.admins) ? data.admins : [];
+  const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId) || businesses[0] || null;
+  const activeBusinesses = businesses.filter((item) => item.status === 'active').length;
+  const paidBusinesses = businesses.filter((item) => item.subscription_status === 'active').length;
+  const overdueBusinesses = businesses.filter((item) => item.subscription_status === 'overdue').length;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem(ACCESS_ADMIN_STORAGE_KEY) || '';
+    if (stored) setAdminKey(stored);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBusinessId && businesses[0]?.id) setSelectedBusinessId(businesses[0].id);
+  }, [businesses, selectedBusinessId]);
+
+  function saveAdminKey(nextKey) {
+    setAdminKey(nextKey);
+    if (typeof window !== 'undefined') localStorage.setItem(ACCESS_ADMIN_STORAGE_KEY, nextKey);
+  }
+
+  async function loadPlatform() {
+    if (!adminKey.trim()) {
+      setMessage('Вставь ACCESS_ADMIN_KEY, чтобы открыть кабинет владельца платформы.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/platform/businesses?admin_key=${encodeURIComponent(adminKey.trim())}&t=${Date.now()}`, { cache: 'no-store' });
+      const next = await response.json();
+      if (!next.ok) throw new Error(next.error || 'Не удалось загрузить кабинет платформы');
+      setData(next);
+      setMessage('Кабинет платформы загружен.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка загрузки кабинета платформы.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleRestaurant(restaurantId) {
+    setSelectedRestaurantIds((current) => current.includes(restaurantId)
+      ? current.filter((item) => item !== restaurantId)
+      : [...current, restaurantId]);
+  }
+
+  async function addBusiness() {
+    const name = newBusinessName.trim();
+    if (!adminKey.trim()) {
+      setMessage('Сначала вставь ACCESS_ADMIN_KEY.');
+      return;
+    }
+    if (!name) {
+      setMessage('Введи название бизнеса клиента.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/platform/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_key: adminKey.trim(),
+          name,
+          city: newBusinessCity.trim() || 'Тюмень',
+          owner_username: normalizeInputUsername(newOwnerUsername),
+          plan_name: newPlanName.trim() || 'pilot',
+          status: newBusinessStatus,
+          subscription_status: newSubscriptionStatus,
+          notes: newBusinessNotes.trim(),
+          restaurant_ids: selectedRestaurantIds
+        })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось добавить бизнес');
+      setData({ businesses: result.businesses || [], restaurants: result.restaurants || [], admins: result.admins || [] });
+      setNewBusinessName('');
+      setNewOwnerUsername('');
+      setNewBusinessNotes('');
+      setSelectedRestaurantIds([]);
+      setSelectedBusinessId(result.business?.id || selectedBusinessId);
+      setMessage('Бизнес добавлен. Теперь к нему можно привязывать рестораны и владельца.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка добавления бизнеса.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Section title="Кабинет платформы" subtitle="твой внутренний экран владельца КЛИК: клиенты, рестораны, подписки и владельцы">
+      <label>
+        <span>Админ-ключ платформы</span>
+        <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
+      </label>
+      <button className="primary-btn" onClick={loadPlatform} disabled={loading}>{loading ? 'Загружаю…' : 'Загрузить кабинет платформы'}</button>
+      {message ? <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>{message}</p> : null}
+
+      <div className="mini-grid" style={{ marginTop: 16 }}>
+        <div className="mini-card"><span>Клиенты</span><b>{businesses.length}</b><p>{activeBusinesses} активных</p></div>
+        <div className="mini-card"><span>Рестораны</span><b>{restaurants.length}</b><p>внутри платформы</p></div>
+        <div className="mini-card"><span>Оплачено</span><b>{paidBusinesses}</b><p>{overdueBusinesses ? `${overdueBusinesses} просрочено` : 'без просрочек'}</p></div>
+      </div>
+
+      <div className="period-switch" style={{ marginTop: 16 }}>
+        <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Клиенты</button>
+        <button className={tab === 'restaurants' ? 'active' : ''} onClick={() => setTab('restaurants')}>Рестораны</button>
+        <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
+        <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
+      </div>
+
+      {tab === 'clients' ? (
+        <div style={{ marginTop: 14 }}>
+          {businesses.length ? businesses.map((business) => (
+            <div className="control-row" key={business.id}>
+              <div>
+                <b>{business.name}</b>
+                <p>{business.city || 'Город'} · {business.restaurants_count || 0} точек · @{business.owner_username || 'нет владельца'}</p>
+              </div>
+              <button onClick={() => setSelectedBusinessId(business.id)}>Открыть</button>
+            </div>
+          )) : <EmptyState title="Клиентов пока нет" text="Нажми “Загрузить кабинет платформы” или добавь новый бизнес." />}
+
+          {selectedBusiness ? (
+            <div className="event-row neutral" style={{ marginTop: 12 }}>
+              <span>↳</span>
+              <div>
+                <b>{selectedBusiness.name}</b>
+                <p>Статус: {platformStatusLabel(selectedBusiness.status)} · подписка: {subscriptionStatusLabel(selectedBusiness.subscription_status)} · тариф: {selectedBusiness.plan_name || 'pilot'}</p>
+                <p>Рестораны: {businessRestaurantsText(selectedBusiness)}</p>
+                {selectedBusiness.notes ? <p>{selectedBusiness.notes}</p> : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {tab === 'restaurants' ? (
+        <div style={{ marginTop: 14 }}>
+          {businesses.length ? businesses.map((business) => (
+            <div key={business.id} style={{ marginBottom: 12 }}>
+              <h3 style={{ margin: '0 0 8px' }}>{business.name}</h3>
+              {(business.restaurants || []).length ? business.restaurants.map((restaurant) => (
+                <div className="control-row" key={`${business.id}-${restaurant.id}`}>
+                  <div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || business.city || 'Город'} · id: {restaurant.id}</p></div>
+                  <span>{restaurant.is_active === false ? 'выкл.' : 'активен'}</span>
+                </div>
+              )) : <p style={{ color: 'var(--muted)', fontSize: 13 }}>Рестораны ещё не привязаны.</p>}
+            </div>
+          )) : <EmptyState title="Рестораны не загружены" text="Сначала загрузи кабинет платформы." />}
+        </div>
+      ) : null}
+
+      {tab === 'subscriptions' ? (
+        <div style={{ marginTop: 14 }}>
+          {businesses.length ? businesses.map((business) => (
+            <div className={`event-row ${subscriptionTone(business.subscription_status)}`} key={business.id}>
+              <span>{business.subscription_status === 'active' ? '✓' : business.subscription_status === 'overdue' ? '!' : '•'}</span>
+              <div>
+                <b>{business.name}</b>
+                <p>{subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'} · статус бизнеса {platformStatusLabel(business.status)}</p>
+              </div>
+            </div>
+          )) : <EmptyState title="Подписки не загружены" text="Сначала загрузи кабинет платформы." />}
+        </div>
+      ) : null}
+
+      {tab === 'owners' ? (
+        <div style={{ marginTop: 14 }}>
+          {admins.length ? admins.map((admin) => (
+            <div className="control-row" key={admin.telegram_id}>
+              <div><b>@{admin.username || admin.telegram_id}</b><p>{admin.role} · {admin.status}</p></div>
+              <span>платформа</span>
+            </div>
+          )) : null}
+          {businesses.length ? businesses.map((business) => (
+            <div className="control-row" key={`owner-${business.id}`}>
+              <div><b>@{business.owner_username || 'нет владельца'}</b><p>{business.name} · владелец бизнеса</p></div>
+              <span>{business.owner_telegram_id ? 'telegram_id есть' : 'ждёт привязки'}</span>
+            </div>
+          )) : <EmptyState title="Владельцы не загружены" text="Сначала загрузи кабинет платформы." />}
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 18 }}>
+        <h3 style={{ margin: '0 0 10px' }}>Добавить новый бизнес</h3>
+        <label><span>Название бизнеса</span><input value={newBusinessName} onChange={(e) => setNewBusinessName(e.target.value)} placeholder="Например: Новый ресторан / сеть" /></label>
+        <label><span>Город</span><input value={newBusinessCity} onChange={(e) => setNewBusinessCity(e.target.value)} placeholder="Тюмень" /></label>
+        <label><span>Владелец Telegram</span><input value={newOwnerUsername} onChange={(e) => setNewOwnerUsername(e.target.value)} placeholder="@client_owner" /></label>
+        <div className="control-row"><div><b>Тариф</b><p>для внутреннего контроля оплаты</p></div><select value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)}><option value="pilot">pilot</option><option value="basic">basic</option><option value="standard">standard</option><option value="network">network</option></select></div>
+        <div className="control-row"><div><b>Подписка</b><p>trial, оплачено или просрочено</p></div><select value={newSubscriptionStatus} onChange={(e) => setNewSubscriptionStatus(e.target.value)}><option value="trial">trial</option><option value="active">оплачено</option><option value="overdue">просрочено</option><option value="cancelled">отключено</option></select></div>
+        <div className="control-row"><div><b>Статус бизнеса</b><p>можно поставить на паузу</p></div><select value={newBusinessStatus} onChange={(e) => setNewBusinessStatus(e.target.value)}><option value="active">активен</option><option value="paused">пауза</option><option value="archived">архив</option></select></div>
+        {restaurants.length ? <div style={{ margin: '10px 0' }}><span style={{ color: 'var(--muted)', fontSize: 13 }}>Привязать существующие рестораны</span>{restaurants.map((restaurant) => (
+          <div className="control-row" key={`pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · id: {restaurant.id}</p></div><input type="checkbox" checked={selectedRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id)} /></div>
+        ))}</div> : null}
+        <label><span>Заметка</span><textarea value={newBusinessNotes} onChange={(e) => setNewBusinessNotes(e.target.value)} placeholder="Например: оплатил пилот, iiko подключить позже" rows={3} /></label>
+        <button className="primary-btn" onClick={addBusiness} disabled={loading || !adminKey.trim()}>Добавить бизнес</button>
+      </div>
+    </Section>
+  );
+}
+
 function AccessAdminBlock({ summary, authInfo }) {
   const [adminKey, setAdminKey] = useState('');
   const [data, setData] = useState({ access: [], invites: [], restaurants: [] });
@@ -1539,6 +1785,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
       </Section>
 
+      <PlatformAdminBlock />
       <AccessAdminBlock summary={summary} authInfo={authInfo} />
 
       <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
