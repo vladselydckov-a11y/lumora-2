@@ -1299,6 +1299,35 @@ function subscriptionTone(value) {
   return 'neutral';
 }
 
+function integrationStatusLabel(value) {
+  const map = {
+    connected: 'Подключено',
+    active: 'Активен',
+    live: 'Данные идут',
+    stale: 'Давно не обновлялось',
+    error: 'Ошибка',
+    paused: 'Пауза',
+    not_connected: 'Не подключено'
+  };
+  return map[value] || value || 'Не подключено';
+}
+
+function integrationTone(value) {
+  if (value === 'connected' || value === 'active' || value === 'live') return 'good';
+  if (value === 'error') return 'bad';
+  if (value === 'stale' || value === 'paused') return 'warn';
+  return 'neutral';
+}
+
+function formatSyncDate(value) {
+  if (!value) return 'синхронизации ещё нет';
+  try {
+    return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return String(value);
+  }
+}
+
 function businessRestaurantsText(business) {
   const restaurants = Array.isArray(business?.restaurants) ? business.restaurants : [];
   if (!restaurants.length) return 'Рестораны пока не привязаны';
@@ -2034,12 +2063,13 @@ function BusinessTeamManager({ authInfo }) {
 
 function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const [adminKey, setAdminKey] = useState('');
-  const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], access: [], invites: [] });
+  const [data, setData] = useState({ businesses: [], restaurants: [], admins: [], payments: [], business_users: [], integrations: [], access: [], invites: [] });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [tab, setTab] = useState('overview');
   const [selectedBusinessId, setSelectedBusinessId] = useState('');
   const [clientFilter, setClientFilter] = useState('all');
+  const [opsFilter, setOpsFilter] = useState('all');
 
   const [newBusinessName, setNewBusinessName] = useState('');
   const [newBusinessCity, setNewBusinessCity] = useState('Тюмень');
@@ -2077,6 +2107,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const admins = Array.isArray(data.admins) ? data.admins : [];
   const payments = Array.isArray(data.payments) ? data.payments : [];
   const businessUsers = Array.isArray(data.business_users) ? data.business_users : [];
+  const integrations = Array.isArray(data.integrations) ? data.integrations : [];
   const access = Array.isArray(data.access) ? data.access : [];
   const invites = Array.isArray(data.invites) ? data.invites : [];
   const canLoadWithTelegram = isTelegramAccessMode(authInfo) && isPlatformOwnerUser(authInfo);
@@ -2089,6 +2120,18 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const selectedBusinessPayments = Array.isArray(selectedBusiness?.payments) ? selectedBusiness.payments : payments.filter((item) => item.business_id === selectedBusiness?.id);
   const selectedBusinessAccess = access.filter((item) => selectedBusinessRestaurantIds.includes(item.restaurant_id));
   const selectedBusinessInvites = invites.filter((item) => selectedBusinessRestaurantIds.includes(item.restaurant_id));
+  const allBusinessRestaurants = businesses.flatMap((business) => (business.restaurants || []).map((restaurant) => ({ business, restaurant })));
+  const connectedIikoRestaurants = allBusinessRestaurants.filter(({ restaurant }) => restaurant.iiko_status === 'connected').length;
+  const activeN8nRestaurants = allBusinessRestaurants.filter(({ restaurant }) => restaurant.n8n_status === 'active').length;
+  const liveDataRestaurants = allBusinessRestaurants.filter(({ restaurant }) => restaurant.data_status === 'live').length;
+  const integrationProblems = allBusinessRestaurants.filter(({ restaurant }) => restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' || restaurant.data_status === 'error').length;
+  const filteredOpsRestaurants = allBusinessRestaurants.filter(({ restaurant }) => {
+    if (opsFilter === 'all') return true;
+    if (opsFilter === 'connected') return restaurant.iiko_status === 'connected' && restaurant.n8n_status === 'active';
+    if (opsFilter === 'problems') return restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' || restaurant.data_status === 'error';
+    if (opsFilter === 'not_connected') return !restaurant.iiko_status || restaurant.iiko_status === 'not_connected';
+    return true;
+  });
 
   const activeBusinesses = businesses.filter((item) => item.status === 'active').length;
   const paidBusinesses = businesses.filter((item) => item.subscription_status === 'active').length;
@@ -2340,6 +2383,30 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
     }
   }
 
+  async function saveIntegrationStatus(business, restaurant, patch = {}) {
+    if (!business?.id || !restaurant?.id) {
+      setMessage('Не выбран бизнес или ресторан.');
+      return;
+    }
+
+    const current = restaurant.integration || {};
+    await callPlatform({
+      action: 'update_restaurant_integration',
+      business_id: business.id,
+      restaurant_id: restaurant.id,
+      iiko_status: patch.iiko_status || current.iiko_status || restaurant.iiko_status || 'not_connected',
+      n8n_status: patch.n8n_status || current.n8n_status || restaurant.n8n_status || 'not_connected',
+      data_status: patch.data_status || current.data_status || restaurant.data_status || 'not_connected',
+      last_sync_at: patch.last_sync_at !== undefined ? patch.last_sync_at : (current.last_sync_at || restaurant.last_sync_at || null),
+      sync_interval_minutes: patch.sync_interval_minutes || current.sync_interval_minutes || restaurant.sync_interval_minutes || 5,
+      workflow_url: patch.workflow_url !== undefined ? patch.workflow_url : (current.workflow_url || ''),
+      iiko_base_url: patch.iiko_base_url !== undefined ? patch.iiko_base_url : (current.iiko_base_url || ''),
+      connection_notes: patch.connection_notes !== undefined ? patch.connection_notes : (current.connection_notes || ''),
+      is_enabled: patch.is_enabled === undefined ? (current.is_enabled === undefined ? true : current.is_enabled) : patch.is_enabled
+    }, 'Статус подключения ресторана обновлён.');
+    setTab('operations');
+  }
+
   function openBusiness(business) {
     setSelectedBusinessId(business.id);
     setSelectedRestaurantIds((business.restaurants || []).map((item) => item.id));
@@ -2368,17 +2435,67 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <div className="mini-card"><small>Клиенты</small><b>{businesses.length}</b><p>{activeBusinesses} активных</p></div>
         <div className="mini-card"><small>Оплачено</small><b>{paidBusinesses}</b><p>{trialBusinesses} trial · {overdueBusinesses} просрочено</p></div>
         <div className="mini-card"><small>Платежи</small><b>{money(totalPaid)}</b><p>{pendingTotal ? `${money(pendingTotal)} ожидается` : 'долгов не видно'}</p></div>
+        <div className="mini-card"><small>Интеграции</small><b>{connectedIikoRestaurants}/{allBusinessRestaurants.length}</b><p>{integrationProblems ? `${integrationProblems} требуют внимания` : 'критичных ошибок нет'}</p></div>
       </div>
 
       <div className="period-switch" style={{ marginTop: 16 }}>
         <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Обзор</button>
         <button className={tab === 'onboarding' ? 'active' : ''} onClick={() => setTab('onboarding')}>Подключение</button>
+        <button className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}>Интеграции</button>
         <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Клиенты</button>
         <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>Бизнес</button>
         <button className={tab === 'restaurants' ? 'active' : ''} onClick={() => setTab('restaurants')}>Рестораны</button>
         <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
         <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
       </div>
+
+      {tab === 'operations' ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="event-row neutral">
+            <span>⚙</span>
+            <div>
+              <b>Статусы подключений клиентов</b>
+              <p>Здесь ты видишь iiko, n8n и свежесть данных по каждому ресторану. Это внутренний экран платформы, клиенты его не видят.</p>
+            </div>
+          </div>
+
+          <div className="mini-grid" style={{ marginTop: 12 }}>
+            <div className="mini-card"><small>iiko</small><b>{connectedIikoRestaurants}/{allBusinessRestaurants.length}</b><p>подключено</p></div>
+            <div className="mini-card"><small>n8n</small><b>{activeN8nRestaurants}</b><p>workflow активен</p></div>
+            <div className="mini-card"><small>Данные</small><b>{liveDataRestaurants}</b><p>живые / обновляются</p></div>
+            <div className="mini-card"><small>Проблемы</small><b>{integrationProblems}</b><p>{integrationProblems ? 'нужно проверить' : 'чисто'}</p></div>
+          </div>
+
+          <div className="period-switch" style={{ marginTop: 14 }}>
+            <button className={opsFilter === 'all' ? 'active' : ''} onClick={() => setOpsFilter('all')}>Все</button>
+            <button className={opsFilter === 'connected' ? 'active' : ''} onClick={() => setOpsFilter('connected')}>Подключены</button>
+            <button className={opsFilter === 'problems' ? 'active' : ''} onClick={() => setOpsFilter('problems')}>Проблемы</button>
+            <button className={opsFilter === 'not_connected' ? 'active' : ''} onClick={() => setOpsFilter('not_connected')}>Не подключены</button>
+          </div>
+
+          {filteredOpsRestaurants.length ? filteredOpsRestaurants.map(({ business, restaurant }) => (
+            <div className={`event-row ${integrationTone(restaurant.data_status || restaurant.iiko_status)}`} key={`ops-${business.id}-${restaurant.id}`} style={{ alignItems: 'flex-start' }}>
+              <span>{restaurant.data_status === 'live' ? '✓' : restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' ? '!' : '•'}</span>
+              <div style={{ width: '100%' }}>
+                <b>{business.name} · {restaurant.name || restaurant.id}</b>
+                <p>id: {restaurant.id} · город: {restaurant.city || business.city || '—'} · последняя синхронизация: {formatSyncDate(restaurant.last_sync_at)}</p>
+                <div className="mini-grid" style={{ marginTop: 10 }}>
+                  <div className="mini-card"><small>iiko</small><b>{integrationStatusLabel(restaurant.iiko_status)}</b><p>источник данных</p></div>
+                  <div className="mini-card"><small>n8n</small><b>{integrationStatusLabel(restaurant.n8n_status)}</b><p>автоматизация</p></div>
+                  <div className="mini-card"><small>Данные</small><b>{integrationStatusLabel(restaurant.data_status)}</b><p>{restaurant.sync_interval_minutes ? `каждые ${restaurant.sync_interval_minutes} мин` : 'интервал не задан'}</p></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  <button onClick={() => saveIntegrationStatus(business, restaurant, { iiko_status: 'connected', n8n_status: 'active', data_status: 'live', last_sync_at: new Date().toISOString(), sync_interval_minutes: 5 })}>Отметить подключено</button>
+                  <button onClick={() => saveIntegrationStatus(business, restaurant, { data_status: 'live', last_sync_at: new Date().toISOString() })}>Синхронизация сейчас</button>
+                  <button onClick={() => saveIntegrationStatus(business, restaurant, { iiko_status: 'error', n8n_status: restaurant.n8n_status || 'error', data_status: 'error' })}>Ошибка</button>
+                  <button onClick={() => saveIntegrationStatus(business, restaurant, { iiko_status: 'not_connected', n8n_status: 'not_connected', data_status: 'not_connected', last_sync_at: null })}>Не подключено</button>
+                  <button onClick={() => openRestaurantDashboard?.(restaurant.id, 'today')}>Открыть дашборд</button>
+                </div>
+              </div>
+            </div>
+          )) : <EmptyState title="Интеграции не загружены" text="Нажми “Загрузить кабинет платформы”. Если ресторанов нет, сначала создай клиента или привяжи точки." />}
+        </div>
+      ) : null}
 
       {tab === 'onboarding' ? (
         <div style={{ marginTop: 14 }}>
