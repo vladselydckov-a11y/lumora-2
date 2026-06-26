@@ -1669,17 +1669,30 @@ function BusinessTeamManager({ authInfo }) {
   const [role, setRole] = useState('viewer');
   const [restaurantIds, setRestaurantIds] = useState([]);
   const [sections, setSections] = useState(['today', 'reports', 'risks']);
+  const [canManageEmployees, setCanManageEmployees] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState('');
+  const [editRole, setEditRole] = useState('viewer');
+  const [editRestaurantIds, setEditRestaurantIds] = useState([]);
+  const [editSections, setEditSections] = useState([]);
+  const [editCanManageEmployees, setEditCanManageEmployees] = useState(false);
 
   const selectedBusiness = businesses.find((item) => item.id === selectedBusinessId) || businesses[0] || null;
   const restaurants = Array.isArray(selectedBusiness?.restaurants) ? selectedBusiness.restaurants : [];
   const canManage = canManageBusinessEmployees(authInfo);
+  const activeMembers = data.members || [];
+  const pendingInvites = data.invites || [];
+  const currentEditingMember = activeMembers.find((item) => item.id === editingMemberId) || null;
 
   useEffect(() => {
     if (!selectedBusinessId && businesses[0]?.id) setSelectedBusinessId(businesses[0].id);
   }, [businesses, selectedBusinessId]);
 
   useEffect(() => {
-    if (selectedBusiness && !restaurantIds.length) setRestaurantIds(restaurants.map((item) => item.id));
+    if (selectedBusiness) {
+      const ids = restaurants.map((item) => item.id);
+      setRestaurantIds(ids);
+      if (!editingMemberId) setEditRestaurantIds(ids);
+    }
   }, [selectedBusinessId]);
 
   useEffect(() => {
@@ -1692,6 +1705,22 @@ function BusinessTeamManager({ authInfo }) {
 
   function toggleSection(id) {
     setSections((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleEditRestaurantId(id) {
+    setEditRestaurantIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleEditSection(id) {
+    setEditSections((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function roleHint(value) {
+    if (value === 'business_admin') return 'почти как владелец: видит все разделы и может управлять сотрудниками';
+    if (value === 'manager') return 'для управляющего: день, отчёты, официанты, аналитика, план и риски';
+    if (value === 'accountant') return 'для бухгалтера: отчёты, аналитика, риски, без официантов и AI-чата';
+    if (value === 'employee') return 'для линейного сотрудника: минимум, обычно сегодня и официанты';
+    return 'режим просмотра: владелец сам выбирает конкретные разделы';
   }
 
   async function loadMembers() {
@@ -1719,6 +1748,14 @@ function BusinessTeamManager({ authInfo }) {
       setMessage('Выбери бизнес и введи Telegram username сотрудника.');
       return;
     }
+    if (!restaurantIds.length) {
+      setMessage('Выбери хотя бы один ресторан для сотрудника.');
+      return;
+    }
+    if (!sections.length) {
+      setMessage('Выбери хотя бы один раздел, который сотрудник сможет видеть.');
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
@@ -1731,16 +1768,66 @@ function BusinessTeamManager({ authInfo }) {
           username: normalized,
           role,
           restaurant_ids: restaurantIds,
-          permissions: { sections, can_manage_employees: ['business_owner', 'business_admin'].includes(role) }
+          permissions: { sections, can_manage_employees: canManageEmployees || ['business_owner', 'business_admin'].includes(role) }
         })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Не удалось добавить сотрудника');
       setUsername('');
       setData(result);
-      setMessage('Сотрудник добавлен. Если он ещё не заходил в Mini App, доступ активируется после первого входа.');
+      setMessage('Сотрудник добавлен. Если он ещё не заходил в Mini App, доступ станет активным после первого входа.');
     } catch (error) {
       setMessage(error.message || 'Ошибка добавления сотрудника.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startEditMember(member) {
+    const permissions = normalizePermissions(member.permissions, member.role);
+    const memberRestaurants = Array.isArray(member.restaurant_ids) && member.restaurant_ids.length ? member.restaurant_ids : restaurants.map((item) => item.id);
+    setEditingMemberId(member.id);
+    setEditRole(member.role || 'viewer');
+    setEditRestaurantIds(memberRestaurants);
+    setEditSections(permissions.sections || defaultSectionsForRole(member.role));
+    setEditCanManageEmployees(Boolean(permissions.can_manage_employees));
+    setMessage('');
+  }
+
+  async function saveEditedMember() {
+    const member = currentEditingMember;
+    if (!member) return;
+    if (!editRestaurantIds.length) {
+      setMessage('У редактируемого сотрудника должен быть хотя бы один ресторан.');
+      return;
+    }
+    if (!editSections.length) {
+      setMessage('У редактируемого сотрудника должен быть хотя бы один видимый раздел.');
+      return;
+    }
+    setLoading(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/business/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
+        body: JSON.stringify({
+          action: 'update_member',
+          business_id: member.business_id || selectedBusinessId,
+          username: normalizeInputUsername(member.username || member.username_normalized || ''),
+          telegram_id: member.telegram_id || undefined,
+          role: editRole,
+          restaurant_ids: editRestaurantIds,
+          permissions: { sections: editSections, can_manage_employees: editCanManageEmployees || ['business_owner', 'business_admin'].includes(editRole) }
+        })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Не удалось обновить права сотрудника');
+      setData(result);
+      setEditingMemberId('');
+      setMessage('Права сотрудника обновлены. При следующем открытии Mini App он увидит только разрешённые разделы.');
+    } catch (error) {
+      setMessage(error.message || 'Ошибка обновления прав сотрудника.');
     } finally {
       setLoading(false);
     }
@@ -1759,6 +1846,7 @@ function BusinessTeamManager({ authInfo }) {
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Не удалось удалить сотрудника');
       setData(result);
+      if (editingMemberId === member.id) setEditingMemberId('');
       setMessage('Сотрудник отключён от бизнеса и ресторанов этого бизнеса.');
     } catch (error) {
       setMessage(error.message || 'Ошибка удаления сотрудника.');
@@ -1778,7 +1866,7 @@ function BusinessTeamManager({ authInfo }) {
   }
 
   return (
-    <Section title="Сотрудники бизнеса" subtitle="владелец сам выдаёт доступы и выбирает, что видит сотрудник">
+    <Section title="Сотрудники бизнеса" subtitle="владелец сам выдаёт рестораны, разделы и уровень прав">
       {businesses.length > 1 ? (
         <label>
           <span>Бизнес</span>
@@ -1788,24 +1876,31 @@ function BusinessTeamManager({ authInfo }) {
         </label>
       ) : null}
 
+      <div className="mini-grid">
+        <div className="mini-card"><small>Активные сотрудники</small><b>{activeMembers.length}</b><p>уже в бизнесе</p></div>
+        <div className="mini-card"><small>Ожидают входа</small><b>{pendingInvites.length}</b><p>pending по username</p></div>
+        <div className="mini-card"><small>Ресторанов доступно</small><b>{restaurants.length}</b><p>{businessRestaurantsText(selectedBusiness)}</p></div>
+      </div>
+
       <div className="business-card">
         <div className="business-card-head">
           <div>
-            <b>{selectedBusiness?.name || 'Бизнес'}</b>
-            <p>{businessRestaurantsText(selectedBusiness)} · сотрудники видят только выбранные рестораны и разделы</p>
+            <b>Добавить или обновить сотрудника</b>
+            <p>Если username уже есть, система обновит ему роль, рестораны и видимые разделы.</p>
           </div>
-          <span className="status-pill good">клиентский кабинет</span>
+          <span className="status-pill good">кабинет владельца</span>
         </div>
         <label>
           <span>Telegram username сотрудника</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@username" />
         </label>
         <div className="control-row">
-          <div><b>Роль</b><p>От роли зависит базовый набор прав</p></div>
+          <div><b>Роль</b><p>{roleHint(role)}</p></div>
           <select value={role} onChange={(e) => {
             const nextRole = e.target.value;
             setRole(nextRole);
             setSections(defaultSectionsForRole(nextRole));
+            setCanManageEmployees(['business_owner', 'business_admin'].includes(nextRole));
           }}>
             <option value="business_admin">Администратор бизнеса</option>
             <option value="manager">Управляющий</option>
@@ -1815,45 +1910,116 @@ function BusinessTeamManager({ authInfo }) {
           </select>
         </div>
 
+        <h3 style={{ margin: '16px 0 10px' }}>Какие рестораны увидит</h3>
         <div className="checkbox-grid">
           {restaurants.map((restaurant) => (
             <label key={restaurant.id}><input type="checkbox" checked={restaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurantId(restaurant.id)} /> {restaurant.name}</label>
           ))}
         </div>
 
+        <h3 style={{ margin: '16px 0 10px' }}>Какие разделы увидит</h3>
         <div className="checkbox-grid">
           {SECTION_PERMISSION_OPTIONS.map((item) => (
             <label key={item.id}><input type="checkbox" checked={sections.includes(item.id)} onChange={() => toggleSection(item.id)} /> {item.label}</label>
           ))}
         </div>
+
+        <label style={{ marginTop: 12 }}><input type="checkbox" checked={canManageEmployees} onChange={(e) => setCanManageEmployees(e.target.checked)} /> может добавлять и удалять сотрудников</label>
         <button className="primary-btn" onClick={addMember} disabled={loading || !username.trim()}>{loading ? 'Сохраняю…' : 'Добавить / обновить сотрудника'}</button>
       </div>
 
       {message ? <p className="muted-line">{message}</p> : null}
 
-      <div className="mini-grid">
-        <div className="mini-card"><small>Активные</small><b>{(data.members || []).length}</b><p>в бизнесе</p></div>
-        <div className="mini-card"><small>Ожидают входа</small><b>{(data.invites || []).length}</b><p>pending</p></div>
-        <div className="mini-card"><small>Рестораны</small><b>{restaurants.length}</b><p>в этом бизнесе</p></div>
-      </div>
-
-      {(data.members || []).length ? data.members.map((member) => {
+      {(activeMembers || []).length ? activeMembers.map((member) => {
         const permissions = normalizePermissions(member.permissions, member.role);
         const memberRestaurants = Array.isArray(member.restaurant_ids) && member.restaurant_ids.length ? member.restaurant_ids : restaurants.map((item) => item.id);
+        const restaurantNames = memberRestaurants.map((id) => restaurants.find((restaurant) => restaurant.id === id)?.name || id);
+        const isEditing = editingMemberId === member.id;
         return (
-          <div className="control-row" key={member.id}>
-            <div>
-              <b>{member.username || member.username_normalized || member.telegram_id}</b>
-              <p>{businessRoleLabel(member.role)} · рестораны: {memberRestaurants.join(', ')} · разделы: {(permissions.sections || []).map(permissionLabel).join(', ')}</p>
+          <div className="business-card" key={member.id}>
+            <div className="business-card-head">
+              <div>
+                <b>{member.username || member.username_normalized || member.telegram_id}</b>
+                <p>{businessRoleLabel(member.role)} · {member.status || 'active'} · {member.telegram_id ? `telegram_id ${member.telegram_id}` : 'привяжется после входа'}</p>
+              </div>
+              <span className={`status-pill ${member.status === 'active' ? 'good' : 'warn'}`}>{member.status || 'active'}</span>
             </div>
-            <button onClick={() => removeMember(member)} disabled={loading}>Удалить</button>
+
+            {!isEditing ? (
+              <>
+                <div className="mini-grid">
+                  <div className="mini-card"><small>Рестораны</small><b>{restaurantNames.length}</b><p>{restaurantNames.join(', ')}</p></div>
+                  <div className="mini-card"><small>Разделы</small><b>{(permissions.sections || []).length}</b><p>{(permissions.sections || []).map(permissionLabel).join(', ')}</p></div>
+                  <div className="mini-card"><small>Сотрудники</small><b>{permissions.can_manage_employees ? 'Да' : 'Нет'}</b><p>может управлять командой</p></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  <button onClick={() => startEditMember(member)} disabled={loading}>Изменить права</button>
+                  <button onClick={() => removeMember(member)} disabled={loading}>Удалить доступ</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="control-row">
+                  <div><b>Роль сотрудника</b><p>{roleHint(editRole)}</p></div>
+                  <select value={editRole} onChange={(e) => {
+                    const nextRole = e.target.value;
+                    setEditRole(nextRole);
+                    setEditSections(defaultSectionsForRole(nextRole));
+                    setEditCanManageEmployees(['business_owner', 'business_admin'].includes(nextRole));
+                  }}>
+                    <option value="business_admin">Администратор бизнеса</option>
+                    <option value="manager">Управляющий</option>
+                    <option value="accountant">Бухгалтер</option>
+                    <option value="viewer">Просмотр</option>
+                    <option value="employee">Сотрудник</option>
+                  </select>
+                </div>
+
+                <h3 style={{ margin: '16px 0 10px' }}>Рестораны сотрудника</h3>
+                <div className="checkbox-grid">
+                  {restaurants.map((restaurant) => (
+                    <label key={`edit-${member.id}-${restaurant.id}`}><input type="checkbox" checked={editRestaurantIds.includes(restaurant.id)} onChange={() => toggleEditRestaurantId(restaurant.id)} /> {restaurant.name}</label>
+                  ))}
+                </div>
+
+                <h3 style={{ margin: '16px 0 10px' }}>Разделы сотрудника</h3>
+                <div className="checkbox-grid">
+                  {SECTION_PERMISSION_OPTIONS.map((item) => (
+                    <label key={`edit-${member.id}-${item.id}`}><input type="checkbox" checked={editSections.includes(item.id)} onChange={() => toggleEditSection(item.id)} /> {item.label}</label>
+                  ))}
+                </div>
+
+                <label style={{ marginTop: 12 }}><input type="checkbox" checked={editCanManageEmployees} onChange={(e) => setEditCanManageEmployees(e.target.checked)} /> может добавлять и удалять сотрудников</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  <button className="primary-btn" onClick={saveEditedMember} disabled={loading}>Сохранить права</button>
+                  <button onClick={() => setEditingMemberId('')} disabled={loading}>Отмена</button>
+                </div>
+              </>
+            )}
           </div>
         );
       }) : <EmptyState title="Сотрудников пока нет" text="Добавь сотрудника по Telegram username. Если он ещё не входил, появится pending-доступ." />}
+
+      {pendingInvites.length ? (
+        <div className="business-card">
+          <div className="business-card-head">
+            <div>
+              <b>Ожидают первого входа</b>
+              <p>Эти люди добавлены по username. После открытия Mini App их telegram_id привяжется автоматически.</p>
+            </div>
+            <span className="status-pill warn">pending</span>
+          </div>
+          {pendingInvites.slice(0, 12).map((invite) => (
+            <div className="control-row" key={invite.id}>
+              <div><b>{invite.username || `@${invite.username_normalized}`}</b><p>{roleLabel(invite.role)} · {restaurants.find((restaurant) => restaurant.id === invite.restaurant_id)?.name || invite.restaurant_id}</p></div>
+              <span>{invite.status || 'pending'}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </Section>
   );
 }
-
 
 function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const [adminKey, setAdminKey] = useState('');
