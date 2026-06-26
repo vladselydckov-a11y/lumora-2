@@ -2486,6 +2486,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>Бизнес</button>
         <button className={tab === 'restaurants' ? 'active' : ''} onClick={() => setTab('restaurants')}>Рестораны</button>
         <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
+        <button className={tab === 'billing' ? 'active' : ''} onClick={() => setTab('billing')}>Финансы</button>
         <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
       </div>
 
@@ -2774,6 +2775,65 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
               </div>
             </div>
           )) : <EmptyState title="Подписки не загружены" text="Сначала загрузи кабинет платформы." />}
+        </div>
+      ) : null}
+
+
+      {tab === 'billing' ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="event-row neutral">
+            <span>₽</span>
+            <div>
+              <b>Финансовый центр платформы</b>
+              <p>Быстрая сводка по оплатам, trial-клиентам и долгам. Это внутренний экран владельца КЛИК, клиентам он не показывается.</p>
+            </div>
+          </div>
+
+          <div className="mini-grid" style={{ marginTop: 12 }}>
+            <div className="mini-card"><small>Оплачено всего</small><b>{money(totalPaid)}</b><p>{payments.filter((payment) => payment.status === 'paid').length} платежей</p></div>
+            <div className="mini-card"><small>Ожидается</small><b>{money(pendingTotal)}</b><p>{businessesWithBillingAttention.length} клиентов требуют контроля</p></div>
+            <div className="mini-card"><small>Trial</small><b>{trialBusinesses}</b><p>кандидаты на перевод в оплату</p></div>
+            <div className="mini-card"><small>Просрочено</small><b>{overdueBusinesses}</b><p>{overdueBusinesses ? 'нужно связаться' : 'долгов не видно'}</p></div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ margin: '0 0 10px' }}>Клиенты по оплате</h3>
+            {businesses.length ? businesses.map((business) => {
+              const tone = business.subscription_status === 'overdue' ? 'warn' : business.subscription_status === 'active' ? 'good' : 'neutral';
+              return (
+                <div className={`event-row ${tone}`} key={`billing-${business.id}`}>
+                  <span>{business.subscription_status === 'active' ? '✓' : business.subscription_status === 'overdue' ? '!' : '•'}</span>
+                  <div>
+                    <b>{business.name}</b>
+                    <p>{subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'} · оплачено {money(business.paid_total || 0)} · ожидается {money(business.pending_total || 0)}</p>
+                    <p>Владелец: @{business.owner_username || 'не назначен'} · точек: {business.restaurants_count || 0}</p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                      <button onClick={() => { openBusiness(business); setTab('business'); }}>Открыть карточку</button>
+                      <button onClick={() => { setSelectedBusinessId(business.id); setPaymentStatus('paid'); setPaymentPlan(business.plan_name || 'pilot'); setTab('business'); }}>Добавить оплату</button>
+                      <button onClick={() => { setSelectedBusinessId(business.id); setQuickSubStatus('active'); setTab('business'); }}>Отметить оплачено</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }) : <EmptyState title="Финансы не загружены" text="Нажми “Загрузить кабинет платформы”." />}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ margin: '0 0 10px' }}>Последние платежи</h3>
+            {payments.length ? payments.slice(0, 8).map((payment) => {
+              const business = businesses.find((item) => item.id === payment.business_id);
+              return (
+                <div className={`control-row ${payment.status === 'paid' ? 'good' : payment.status === 'overdue' ? 'warn' : ''}`} key={payment.id || `${payment.business_id}-${payment.created_at}`}>
+                  <div>
+                    <b>{business?.name || payment.business_id}</b>
+                    <p>{money(payment.amount)} · {payment.status} · {payment.plan_name || 'pilot'}</p>
+                    <p>{payment.notes || 'без заметки'} {payment.created_at ? `· ${new Date(payment.created_at).toLocaleDateString('ru-RU')}` : ''}</p>
+                  </div>
+                  {business ? <button onClick={() => openBusiness(business)}>Открыть</button> : null}
+                </div>
+              );
+            }) : <EmptyState title="Платежей пока нет" text="Открой карточку бизнеса и добавь первую оплату." />}
+          </div>
         </div>
       ) : null}
 
