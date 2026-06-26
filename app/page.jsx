@@ -2140,6 +2140,45 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const totalPaid = businesses.reduce((total, item) => total + Number(item.paid_total || 0), 0);
   const pendingTotal = businesses.reduce((total, item) => total + Number(item.pending_total || 0), 0);
 
+  const businessesWithoutOwner = businesses.filter((item) => !item.owner_username && !(item.users || []).some((user) => user.role === 'business_owner'));
+  const businessesWithoutRestaurants = businesses.filter((item) => !(item.restaurants || []).length);
+  const businessesWithBillingAttention = businesses.filter((item) => item.subscription_status !== 'active' || Number(item.pending_total || 0) > 0);
+  const integrationProblemRows = allBusinessRestaurants.filter(({ restaurant }) => restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' || restaurant.data_status === 'error' || restaurant.iiko_status === 'not_connected' || restaurant.n8n_status === 'not_connected');
+  const platformHealthScore = businesses.length
+    ? Math.max(0, Math.round(100 - (overdueBusinesses * 18) - (businessesWithoutOwner.length * 12) - (businessesWithoutRestaurants.length * 10) - (integrationProblems * 15)))
+    : 0;
+  const platformActionItems = [
+    ...businessesWithBillingAttention.slice(0, 4).map((business) => ({
+      type: 'billing',
+      tone: business.subscription_status === 'overdue' ? 'warn' : 'neutral',
+      title: `${business.name}: подписка ${subscriptionStatusLabel(business.subscription_status)}`,
+      text: `${business.plan_name || 'pilot'} · оплачено ${money(business.paid_total || 0)} · ожидается ${money(business.pending_total || 0)}`,
+      business
+    })),
+    ...integrationProblemRows.slice(0, 4).map(({ business, restaurant }) => ({
+      type: 'integration',
+      tone: restaurant.data_status === 'error' || restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' ? 'warn' : 'neutral',
+      title: `${business.name}: ${restaurant.name || restaurant.id}`,
+      text: `iiko ${integrationStatusLabel(restaurant.iiko_status)} · n8n ${integrationStatusLabel(restaurant.n8n_status)} · данные ${integrationStatusLabel(restaurant.data_status)}`,
+      business,
+      restaurant
+    })),
+    ...businessesWithoutOwner.slice(0, 3).map((business) => ({
+      type: 'owner',
+      tone: 'warn',
+      title: `${business.name}: владелец не назначен`,
+      text: 'Добавь Telegram username владельца бизнеса, чтобы он увидел свой кабинет.',
+      business
+    })),
+    ...businessesWithoutRestaurants.slice(0, 3).map((business) => ({
+      type: 'restaurants',
+      tone: 'warn',
+      title: `${business.name}: нет ресторанов`,
+      text: 'Клиент есть в платформе, но к нему не привязаны точки.',
+      business
+    }))
+  ].slice(0, 10);
+
   const filteredBusinesses = businesses.filter((business) => {
     if (clientFilter === 'all') return true;
     if (clientFilter === 'paid') return business.subscription_status === 'active';
@@ -2440,6 +2479,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
 
       <div className="period-switch" style={{ marginTop: 16 }}>
         <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Обзор</button>
+        <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')}>Контроль</button>
         <button className={tab === 'onboarding' ? 'active' : ''} onClick={() => setTab('onboarding')}>Подключение</button>
         <button className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}>Интеграции</button>
         <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Клиенты</button>
@@ -2448,6 +2488,75 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
         <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
       </div>
+
+      {tab === 'control' ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="event-row neutral">
+            <span>☑</span>
+            <div>
+              <b>Командный центр КЛИК</b>
+              <p>Один экран, где видно: кто платит, где не назначен владелец, где проблема с iiko/n8n и куда провалиться в первую очередь. Это видишь только ты как владелец платформы.</p>
+            </div>
+          </div>
+
+          <div className="mini-grid" style={{ marginTop: 12 }}>
+            <div className="mini-card"><small>Здоровье платформы</small><b>{platformHealthScore}%</b><p>{platformHealthScore >= 80 ? 'всё спокойно' : platformHealthScore >= 55 ? 'есть что проверить' : 'нужен разбор'}</p></div>
+            <div className="mini-card"><small>Клиенты</small><b>{businesses.length}</b><p>{activeBusinesses} активных · {businessesWithoutOwner.length} без владельца</p></div>
+            <div className="mini-card"><small>Подписки</small><b>{paidBusinesses}/{businesses.length}</b><p>{trialBusinesses} trial · {overdueBusinesses} просрочено</p></div>
+            <div className="mini-card"><small>Интеграции</small><b>{connectedIikoRestaurants}/{allBusinessRestaurants.length}</b><p>{integrationProblems ? `${integrationProblems} ошибок` : 'без ошибок'}</p></div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ margin: '0 0 10px' }}>Что требует внимания</h3>
+            {platformActionItems.length ? platformActionItems.map((item, index) => (
+              <div className={`event-row ${item.tone || 'neutral'}`} key={`platform-action-${index}`}>
+                <span>{item.type === 'billing' ? '₽' : item.type === 'integration' ? '⚙' : item.type === 'owner' ? '@' : '•'}</span>
+                <div>
+                  <b>{item.title}</b>
+                  <p>{item.text}</p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                    {item.business ? <button onClick={() => openBusiness(item.business)}>Открыть бизнес</button> : null}
+                    {item.restaurant ? <button onClick={() => openRestaurantDashboard?.(item.restaurant.id, 'today')}>Дашборд ресторана</button> : null}
+                    {item.restaurant ? <button onClick={() => saveIntegrationStatus(item.business, item.restaurant, { iiko_status: 'connected', n8n_status: 'active', data_status: 'live', last_sync_at: new Date().toISOString(), sync_interval_minutes: 5 })}>Отметить исправлено</button> : null}
+                  </div>
+                </div>
+              </div>
+            )) : <EmptyState title="Критичных задач нет" text="Подписки, владельцы, рестораны и интеграции выглядят нормально. Можно идти в Клиенты или Подключение." />}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ margin: '0 0 10px' }}>Карта клиентов</h3>
+            {businesses.length ? businesses.map((business) => {
+              const restaurantsCount = (business.restaurants || []).length;
+              const connectedCount = Number(business.integrations_connected_count || 0);
+              const hasOwner = Boolean(business.owner_username) || (business.users || []).some((user) => user.role === 'business_owner');
+              const hasProblem = business.subscription_status === 'overdue' || Number(business.integrations_error_count || 0) > 0 || !hasOwner || !restaurantsCount;
+              return (
+                <div className={`business-card ${hasProblem ? 'warn' : 'good'}`} key={`control-business-${business.id}`}>
+                  <div className="business-card-head">
+                    <div>
+                      <b>{business.name}</b>
+                      <p>{business.city || 'Город'} · {subscriptionStatusLabel(business.subscription_status)} · тариф {business.plan_name || 'pilot'}</p>
+                    </div>
+                    <span className={`status-pill ${hasProblem ? 'warn' : 'good'}`}>{hasProblem ? 'проверить' : 'норма'}</span>
+                  </div>
+                  <div className="mini-grid" style={{ marginTop: 10 }}>
+                    <div className="mini-card"><small>Рестораны</small><b>{restaurantsCount}</b><p>{connectedCount}/{restaurantsCount || 0} подключено</p></div>
+                    <div className="mini-card"><small>Владелец</small><b>{hasOwner ? '@' + (business.owner_username || (business.users || []).find((user) => user.role === 'business_owner')?.username_normalized || 'есть') : 'нет'}</b><p>{hasOwner ? 'доступ есть' : 'нужно назначить'}</p></div>
+                    <div className="mini-card"><small>Оплачено</small><b>{money(business.paid_total || 0)}</b><p>{business.pending_total ? `${money(business.pending_total)} ожидается` : 'долгов нет'}</p></div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                    <button onClick={() => openBusiness(business)}>Открыть карточку</button>
+                    {(business.restaurants || [])[0]?.id ? <button onClick={() => openRestaurantDashboard?.((business.restaurants || [])[0].id, 'today')}>Первый дашборд</button> : null}
+                    <button onClick={() => { setSelectedBusinessId(business.id); setTab('subscriptions'); }}>Подписка</button>
+                    <button onClick={() => { setSelectedBusinessId(business.id); setTab('operations'); }}>Интеграции</button>
+                  </div>
+                </div>
+              );
+            }) : <EmptyState title="Клиенты не загружены" text="Нажми “Загрузить кабинет платформы”." />}
+          </div>
+        </div>
+      ) : null}
 
       {tab === 'operations' ? (
         <div style={{ marginTop: 14 }}>
