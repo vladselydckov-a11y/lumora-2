@@ -1382,3 +1382,213 @@ label { min-width: 0; }
     font-size: 13px !important;
   }
 }
+
+/* === Design Super Pack 3: dashboard and owner console polish ===
+   Purpose: reduce visual noise, make owner console feel like a clean home screen,
+   and make Today read like a compact executive dashboard. */
+:root[data-theme="light"] .screen-title-block {
+  padding: 2px 2px 0;
+  color: #0d2348;
+}
+:root[data-theme="light"] .screen-title-block span {
+  display: block;
+  color: #6a7890;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+:root[data-theme="light"] .screen-title-block h1 {
+  margin: 4px 0 2px;
+  color: #0b2148;
+  font-size: clamp(26px, 7vw, 34px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+:root[data-theme="light"] .screen-title-block p {
+  margin: 0;
+  color: #66758c;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+:root[data-theme="light"] .console-home-wrap {
+  padding: 16px 14px 12px !important;
+  display: grid !important;
+  gap: 12px !important;
+  background: #ffffff !important;
+}
+:root[data-theme="light"] .console-hero-panel {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(75, 166, 255, .28), transparent 40%),
+    linear-gradient(145deg, #08307d 0%, #0a4fb8 56%, #1f8dff 100%) !important;
+  border: 1px solid rgba(87, 173, 255, .30) !important;
+  box-shadow: 0 18px 42px rgba(21, 91, 190, .18) !important;
+  color: #ffffff !important;
+}
+:root[data-theme="light"] .console-hero-panel small,
+:root[data-theme="light"] .console-hero-panel p {
+  color: rgba(238,246,255,.78) !important;
+}
+:root[data-theme="light"] .console-hero-panel h1 {
+  color: #ffffff !important;
+  font-size: 30px !important;
+  letter-spacing: -0.05em !important;
+}
+:root[data-theme="light"] .console-hero-panel button {
+  background: rgba(255,255,255,.14) !important;
+  border: 1px solid rgba(220,240,255,.22) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+:root[data-theme="light"] .console-hero-panel .mini-card {
+  background: rgba(255,255,255,.13) !important;
+  border: 1px solid rgba(220,240,255,.18) !important;
+  color: #ffffff !important;
+}
+:root[data-theme="light"] .console-hero-panel .mini-card small,
+:root[data-theme="light"] .console-hero-panel .mini-card p {
+  color: rgba(238,246,255,.76) !important;
+}
+:root[data-theme="light"] .console-hero-panel .mini-card b {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .platform-console-clean {
+  background: #ffffff !important;
+  border-color: rgba(18,84,180,.10) !important;
+  color: #0e2b54 !important;
+  box-shadow: 0 16px 46px rgba(16, 75, 160, .08) !important;
+}
+:root[data-theme="light"] .platform-console-clean .section-head {
+  padding-bottom: 10px !important;
+  border-bottom: 1px solid rgba(18,84,180,.08) !important;
+}
+:root[data-theme="light"] .platform-console-clean h2,
+:root[data-theme="light"] .platform-console-clean h3,
+:root[data-theme="light"] .platform-console-clean b,
+:root[data-theme="light"] .platform-console-clean strong {
+  color: #0b2348 !important;
+}
+:root[data-theme="light"] .platform-console-clean p,
+:root[data-theme="light"] .platform-console-clean small,
+:root[data-theme="light"] .platform-console-clean span:not(.status-pill) {
+  color: #6a7890;
+}
+:root[data-theme="light"] .platform-console-clean .primary-btn {
+  height: 54px !important;
+  border-radius: 19px !important;
+  background: linear-gradient(135deg, #0d6fe7 0%, #5ab1ff 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px rgba(13, 111, 231, .18) !important;
+}
+:root[data-theme="light"] .platform-console-clean label,
+:root[data-theme="light"] .platform-console-clean .control-row,
+:root[data-theme="light"] .platform-console-clean .event-row,
+:root[data-theme="light"] .platform-console-clean .business-card,
+:root[data-theme="light"] .platform-console-clean .mini-card {
+  background: #f6faff !important;
+  border-color: rgba(18,84,180,.12) !important;
+  color: #0b2348 !important;
+}
+:root[data-theme="light"] .platform-console-clean .mini-grid {
+  gap: 10px !important;
+}
+:root[data-theme="light"] .platform-console-clean .mini-card {
+  min-height: 110px !important;
+  display: grid !important;
+  align-content: start !important;
+}
+:root[data-theme="light"] .platform-console-clean .mini-card b {
+  font-size: clamp(22px, 7vw, 32px) !important;
+  line-height: 1.03 !important;
+  letter-spacing: -0.04em !important;
+}
+:root[data-theme="light"] .platform-console-clean input,
+:root[data-theme="light"] .platform-console-clean textarea,
+:root[data-theme="light"] .platform-console-clean select {
+  background: #ffffff !important;
+  color: #0b2348 !important;
+  border-color: rgba(18,84,180,.16) !important;
+  box-shadow: 0 7px 18px rgba(16,75,160,.05) !important;
+}
+:root[data-theme="light"] .platform-console-clean input::placeholder,
+:root[data-theme="light"] .platform-console-clean textarea::placeholder {
+  color: #8794a8 !important;
+}
+
+:root[data-theme="light"] .today-clean > .panel {
+  background: #ffffff !important;
+  border-color: rgba(18,84,180,.10) !important;
+  color: #0b2348 !important;
+  box-shadow: 0 14px 34px rgba(16,75,160,.07) !important;
+}
+:root[data-theme="light"] .today-clean > .panel h2,
+:root[data-theme="light"] .today-clean > .panel b,
+:root[data-theme="light"] .today-clean > .panel strong {
+  color: #0b2348 !important;
+}
+:root[data-theme="light"] .today-clean > .panel p,
+:root[data-theme="light"] .today-clean > .panel span,
+:root[data-theme="light"] .today-clean > .panel small {
+  color: #64738a;
+}
+:root[data-theme="light"] .today-clean .section-head {
+  margin-bottom: 10px !important;
+}
+:root[data-theme="light"] .today-clean .section-head h2 {
+  font-size: 18px !important;
+}
+:root[data-theme="light"] .today-clean .forecast-grid div,
+:root[data-theme="light"] .today-clean .event-row,
+:root[data-theme="light"] .today-clean .channel-row,
+:root[data-theme="light"] .today-clean .category-row {
+  background: #f6faff !important;
+  border-color: rgba(18,84,180,.10) !important;
+}
+:root[data-theme="light"] .today-clean .ai-note {
+  background: linear-gradient(135deg, #073a9b 0%, #0b63d9 65%, #238cff 100%) !important;
+  border-color: rgba(70,165,255,.26) !important;
+  color: #ffffff !important;
+}
+:root[data-theme="light"] .today-clean .ai-note b,
+:root[data-theme="light"] .today-clean .ai-note p {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .stat-card {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(93, 178, 255, .20), transparent 42%),
+    linear-gradient(145deg, #0a347d 0%, #0d54b8 58%, #197ce8 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(90, 173, 255, .26) !important;
+}
+:root[data-theme="light"] .stat-card .stat-top,
+:root[data-theme="light"] .stat-card .stat-top span {
+  color: rgba(238,246,255,.70) !important;
+}
+:root[data-theme="light"] .stat-card .stat-top b {
+  color: #bfe8ff !important;
+}
+:root[data-theme="light"] .stat-card strong {
+  color: #ffffff !important;
+}
+:root[data-theme="light"] .stat-card .sparkline {
+  color: rgba(205,232,255,.92) !important;
+}
+
+@media (max-width: 430px) {
+  :root[data-theme="light"] .platform-console-clean .period-switch.platform-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+  :root[data-theme="light"] .platform-console-clean .period-switch.platform-nav button {
+    min-height: 46px !important;
+    font-size: 13px !important;
+  }
+  :root[data-theme="light"] .platform-console-clean .mini-card {
+    min-height: 96px !important;
+  }
+  :root[data-theme="light"] .console-hero-panel h1 {
+    font-size: 28px !important;
+  }
+}
