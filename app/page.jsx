@@ -719,6 +719,12 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
   return (
     <div className="screen-stack today-clean">
+      <div className="screen-title-block">
+        <span>{summary?.period?.title || periodTitle(period)}</span>
+        <h1>{heroTitle(period)}</h1>
+        <p>{summary?.restaurant?.name || summary?.restaurant?.id || 'Ресторан'} · ключевые цифры без лишнего шума</p>
+      </div>
+
       <div className="hero-card revenue-hero-card">
         <div>
           <div className="hero-headline-row"><span className="eyebrow">{heroTitle(period)}</span><span className="hero-badge">● {summary?.generatedAt || '—'} · авто-обновление</span></div>
@@ -1990,7 +1996,7 @@ function BusinessTeamManager({ authInfo }) {
             <div className="business-card-head">
               <div>
                 <b>{member.username || member.username_normalized || member.telegram_id}</b>
-                <p>{businessRoleLabel(member.role)} · {member.status || 'active'} · {member.telegram_id ? `telegram_id ${member.telegram_id}` : 'привяжется после входа'}</p>
+                <p>{businessRoleLabel(member.role)} · {member.status || 'active'} · {member.telegram_id ? 'доступ активен' : 'ждёт первого входа'}</p>
               </div>
               <span className={`status-pill ${member.status === 'active' ? 'good' : 'warn'}`}>{member.status || 'active'}</span>
             </div>
@@ -2055,7 +2061,7 @@ function BusinessTeamManager({ authInfo }) {
           <div className="business-card-head">
             <div>
               <b>Ожидают первого входа</b>
-              <p>Эти люди добавлены по username. После открытия Mini App их telegram_id привяжется автоматически.</p>
+              <p>Эти люди добавлены по username. После первого входа доступ привяжется автоматически.</p>
             </div>
             <span className="status-pill warn">pending</span>
           </div>
@@ -2227,7 +2233,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
 
   async function callPlatform(payload = {}, successText = 'Готово') {
     if (!hasPlatformGate) {
-      setMessage('Открой Mini App как владелец платформы или вставь ACCESS_ADMIN_KEY.');
+      setMessage('Открой Mini App как владелец платформы или вставь ключ доступа.');
       return null;
     }
     setLoading(true);
@@ -2254,7 +2260,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
 
   async function loadPlatform() {
     if (!hasPlatformGate) {
-      setMessage('Открой Mini App как владелец платформы или вставь ACCESS_ADMIN_KEY.');
+      setMessage('Открой Mini App как владелец платформы или вставь ключ доступа.');
       return;
     }
     setLoading(true);
@@ -2465,16 +2471,16 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   }
 
   return (
-    <Section className="platform-console-panel" title="Кабинет платформы" subtitle="внутренний экран КЛИК: клиенты, рестораны, подписки, владельцы и платежи">
+    <Section className="platform-console-panel platform-console-clean" title="Панель КЛИК" subtitle="клиенты, рестораны, подписки, владельцы и платежи">
       {canLoadWithTelegram ? (
         <div className="control-row">
-          <div><b>Доступ владельца платформы активен</b><p>Кабинет загружается по Telegram ID, ключ в интерфейсе не нужен.</p></div>
+          <div><b>Доступ владельца платформы активен</b><p>Кабинет загружается автоматически. Ключ не нужен.</p></div>
           <span>@{authInfo?.user?.username || 'telegram'}</span>
         </div>
       ) : (
         <label>
           <span>Админ-ключ платформы</span>
-          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
+          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ключ доступа" />
         </label>
       )}
       <button className="primary-btn" onClick={loadPlatform} disabled={loading || !hasPlatformGate}>{loading ? 'Загружаю…' : 'Загрузить кабинет платформы'}</button>
@@ -2506,7 +2512,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
             <span>☑</span>
             <div>
               <b>Командный центр КЛИК</b>
-              <p>Один экран, где видно: кто платит, где не назначен владелец, где проблема с iiko/n8n и куда провалиться в первую очередь. Это видишь только ты как владелец платформы.</p>
+              <p>Один экран, где видно: кто платит, где не назначен владелец, где проблема с iiko/n8n и куда провалиться в первую очередь. Это видишь только ты.</p>
             </div>
           </div>
 
@@ -2575,7 +2581,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
             <span>⚙</span>
             <div>
               <b>Статусы подключений клиентов</b>
-              <p>Здесь ты видишь iiko, n8n и свежесть данных по каждому ресторану. Это внутренний экран платформы, клиенты его не видят.</p>
+              <p>Здесь видно, у каких точек подключены iiko, n8n и живые данные.</p>
             </div>
           </div>
 
@@ -2761,7 +2767,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
               <h3 style={{ margin: '0 0 8px' }}>{business.name}</h3>
               {(business.restaurants || []).length ? business.restaurants.map((restaurant) => (
                 <div className="control-row" key={`${business.id}-${restaurant.id}`}>
-                  <div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || business.city || 'Город'} · id: {restaurant.id}</p></div>
+                  <div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || business.city || 'Город'} · точка клиента</p></div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
                     <button onClick={() => openBusiness(business)}>Открыть бизнес</button>
                     <button onClick={() => openRestaurantDashboard?.(restaurant.id, 'today')}>Дашборд</button>
@@ -2795,7 +2801,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
             <span>₽</span>
             <div>
               <b>Финансовый центр платформы</b>
-              <p>Быстрая сводка по оплатам, trial-клиентам и долгам. Это внутренний экран владельца КЛИК, клиентам он не показывается.</p>
+              <p>Быстрая сводка по оплатам, trial-клиентам и долгам.</p>
             </div>
           </div>
 
@@ -2863,8 +2869,8 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
           )) : <EmptyState title="Владельцы не загружены" text="Сначала загрузи кабинет платформы." />}
           {businessUsers.length ? businessUsers.map((user) => (
             <div className="control-row" key={user.id || `${user.business_id}-${user.username_normalized}`}>
-              <div><b>@{user.username_normalized || user.username || 'user'}</b><p>{user.business_id} · {user.role} · {user.status}</p></div>
-              <span>{user.telegram_id ? 'telegram_id есть' : 'ждёт входа'}</span>
+              <div><b>@{user.username_normalized || user.username || 'user'}</b><p>{businessRoleLabel(user.role)} · {user.status}</p></div>
+              <span>{user.telegram_id ? 'доступ активен' : 'ждёт входа'}</span>
             </div>
           )) : null}
         </div>
@@ -2920,7 +2926,7 @@ function AccessAdminBlock({ summary, authInfo }) {
 
   async function loadAccess() {
     if (!adminKey.trim()) {
-      setMessage('Вставь ACCESS_ADMIN_KEY из Vercel, чтобы открыть управление доступами.');
+      setMessage('Вставь ключ доступа, чтобы открыть управление доступами.');
       return;
     }
     setLoading(true);
@@ -3020,7 +3026,7 @@ function AccessAdminBlock({ summary, authInfo }) {
       <Section title="Управление доступами" subtitle="сотрудники, приглашения и рестораны">
         <label>
           <span>Админ-ключ</span>
-          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ACCESS_ADMIN_KEY из Vercel" />
+          <input type="password" value={adminKey} onChange={(e) => saveAdminKey(e.target.value)} placeholder="ключ доступа" />
         </label>
         <button className="primary-btn" onClick={loadAccess} disabled={loading}>{loading ? 'Загружаю…' : 'Загрузить доступы'}</button>
         {message ? <p style={{ margin: '10px 0 0', color: 'var(--muted)', fontSize: 13 }}>{message}</p> : null}
@@ -3097,7 +3103,7 @@ function AccessAdminBlock({ summary, authInfo }) {
           <div className="control-row" key={item.id}>
             <div>
               <b>{item.name || item.id}</b>
-              <p>{item.city || 'Город'} · id: {item.id}</p>
+              <p>{item.city || 'Город'} · активная точка</p>
             </div>
             <span>{item.is_active === false ? 'выкл.' : 'активен'}</span>
           </div>
@@ -3365,13 +3371,13 @@ export default function Page() {
           <div className="content no-access-only">{screen}</div>
         ) : isOwnerConsole ? (
           <>
-            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
-              <section style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
+            <div className="console-home-wrap">
+              <section className="console-hero-panel" style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div>
                     <small style={{ color: 'var(--muted)' }}>Главный экран владельца платформы</small>
                     <h1 style={{ margin: '4px 0 6px', fontSize: 24 }}>Панель КЛИК</h1>
-                    <p style={{ margin: 0, color: 'var(--muted)' }}>Здесь ты управляешь клиентами, подписками, владельцами и ресторанами. В статистику ресторана проваливаешься только после выбора бизнеса или точки.</p>
+                    <p style={{ margin: 0, color: 'var(--muted)' }}>Твой главный экран. Сначала выбираешь клиента или точку, потом открываешь статистику.</p>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => setTab('today')}>Открыть текущий дашборд</button>
@@ -3380,7 +3386,7 @@ export default function Page() {
                 </div>
                 <div className="mini-grid">
                   <div className="mini-card"><small>Текущий контекст</small><b>{viewingRestaurantName}</b><p>дашборд откроется только после выбора ресторана</p></div>
-                  <div className="mini-card"><small>Твой режим</small><b>platform_owner</b><p>видишь всех клиентов и можешь проваливаться в их точки</p></div>
+                  <div className="mini-card"><small>Твой режим</small><b>Владелец КЛИК</b><p>все клиенты и точки под контролем</p></div>
                   <div className="mini-card"><small>Клиентский режим</small><b>изолирован</b><p>ресторатор видит только свой бизнес и сотрудников</p></div>
                 </div>
               </section>
@@ -3390,8 +3396,8 @@ export default function Page() {
           </>
         ) : isClientConsole ? (
           <>
-            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
-              <section style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
+            <div className="console-home-wrap">
+              <section className="console-hero-panel" style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div>
                     <small style={{ color: 'var(--muted)' }}>Главный экран владельца бизнеса</small>
