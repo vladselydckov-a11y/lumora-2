@@ -15,6 +15,18 @@ function safeBusinessId(value, name = '') {
   return source || `biz_${Date.now()}`;
 }
 
+function safeRestaurantId(value, name = '') {
+  const source = String(value || name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9а-яё_-]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+
+  return source || `restaurant_${Date.now()}`;
+}
+
 function cleanText(value, fallback = '') {
   const text = String(value || '').trim();
   return text || fallback;
@@ -227,6 +239,94 @@ async function getPlatformData() {
   };
 }
 
+
+async function upsertRestaurant(body = {}) {
+  const name = cleanText(body.name || body.restaurant_name || body.restaurantName);
+  if (!name) throw new Error('Restaurant name is required');
+
+  const id = safeRestaurantId(body.id || body.restaurant_id || body.restaurantId, name);
+  const payload = {
+    id,
+    name,
+    city: cleanText(body.city, 'Тюмень'),
+    is_active: body.is_active === undefined ? true : Boolean(body.is_active)
+  };
+
+  const existing = await supabaseFetch(`/rest/v1/restaurants?select=*&id=eq.${encode(id)}&limit=1`).catch(() => []);
+
+  if (Array.isArray(existing) && existing[0]) {
+    const updated = await supabaseFetch(`/rest/v1/restaurants?id=eq.${encode(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+    return Array.isArray(updated) ? updated[0] : { ...existing[0], ...payload };
+  }
+
+  const inserted = await supabaseFetch('/rest/v1/restaurants', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }).catch(() => null);
+
+  return Array.isArray(inserted) ? inserted[0] : payload;
+}
+
+async function createBusinessWithRestaurants(body = {}) {
+  const restaurantInputs = Array.isArray(body.restaurants_to_create)
+    ? body.restaurants_to_create
+    : Array.isArray(body.restaurantsToCreate)
+      ? body.restaurantsToCreate
+      : [];
+
+  const createdRestaurants = [];
+  for (const restaurantInput of restaurantInputs) {
+    const restaurantName = cleanText(restaurantInput?.name || restaurantInput?.restaurant_name || restaurantInput?.restaurantName);
+    if (!restaurantName) continue;
+    const restaurant = await upsertRestaurant({
+      ...restaurantInput,
+      city: restaurantInput?.city || body.city || 'Тюмень'
+    });
+    createdRestaurants.push(restaurant);
+  }
+
+  const restaurantIds = unique([
+    ...(body.restaurant_ids || body.restaurantIds || []),
+    ...createdRestaurants.map((item) => item.id)
+  ]);
+
+  const business = await upsertBusiness({
+    ...body,
+    restaurant_ids: restaurantIds
+  });
+
+  let ownerResult = null;
+  const ownerUsername = normalizeUsername(body.owner_username || body.ownerUsername);
+  if (ownerUsername) {
+    ownerResult = await addBusinessUser({
+      business_id: business.id,
+      username: ownerUsername,
+      business_role: 'business_owner',
+      restaurant_role: 'owner',
+      restaurant_ids: restaurantIds,
+      telegram_id: body.owner_telegram_id || body.ownerTelegramId || null
+    });
+  }
+
+  let payment = null;
+  const initialAmount = Number(body.initial_payment_amount || body.initialPaymentAmount || 0);
+  if (Number.isFinite(initialAmount) && initialAmount > 0) {
+    payment = await addPayment({
+      business_id: business.id,
+      amount: initialAmount,
+      currency: body.currency || 'RUB',
+      status: body.payment_status || body.paymentStatus || 'paid',
+      plan_name: body.plan_name || 'pilot',
+      notes: body.payment_notes || body.paymentNotes || 'Стартовый платёж при подключении клиента'
+    });
+  }
+
+  return { business, created_restaurants: createdRestaurants, owner: ownerResult?.user || null, invites: ownerResult?.invites || [], payment };
+}
+
 async function upsertBusiness(body) {
   const name = cleanText(body.name);
   if (!name) throw new Error('Business name is required');
@@ -359,6 +459,10 @@ export async function POST(request) {
 
     if (action === 'upsert_business' || action === 'create_business' || action === 'update_business') {
       result = { business: await upsertBusiness(body) };
+    } else if (action === 'upsert_restaurant' || action === 'create_restaurant') {
+      result = { restaurant: await upsertRestaurant(body) };
+    } else if (action === 'create_business_with_restaurants' || action === 'onboard_client') {
+      result = await createBusinessWithRestaurants(body);
     } else if (action === 'add_payment') {
       result = { payment: await addPayment(body) };
     } else if (action === 'add_business_user' || action === 'assign_owner') {
