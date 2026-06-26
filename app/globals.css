@@ -2108,3 +2108,179 @@ html[data-theme="light"] body {
     flex-direction: column;
   }
 }
+
+/* =========================================================
+   MAIN SCREEN BLUE FIX PACK вЂ” Today/dashboard must match blue cards
+   Scope: light theme only. Does not touch API/iiko/n8n/data.
+========================================================= */
+:root[data-theme="light"] {
+  --klik-card-blue-a: #061f4a;
+  --klik-card-blue-b: #0a3a86;
+  --klik-card-blue-c: #1676e6;
+  --klik-card-text: #ffffff;
+  --klik-card-muted: rgba(235, 246, 255, 0.82);
+  --klik-card-soft: rgba(235, 246, 255, 0.66);
+  --klik-card-border: rgba(176, 219, 255, 0.24);
+}
+
+:root[data-theme="light"] .today-clean .screen-title-block,
+:root[data-theme="light"] .today-clean .hero-card,
+:root[data-theme="light"] .today-clean .revenue-hero-card,
+:root[data-theme="light"] .today-clean .stat-card,
+:root[data-theme="light"] .today-clean .panel,
+:root[data-theme="light"] .today-clean .chat-box {
+  color: var(--klik-card-text) !important;
+  background:
+    radial-gradient(circle at 95% 0%, rgba(126, 198, 255, .28), transparent 34%),
+    linear-gradient(145deg, var(--klik-card-blue-a) 0%, var(--klik-card-blue-b) 52%, var(--klik-card-blue-c) 100%) !important;
+  border: 1px solid var(--klik-card-border) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 16px 38px rgba(7, 47, 112, .15) !important;
+}
+
+:root[data-theme="light"] .today-clean .screen-title-block {
+  border-radius: 22px !important;
+  padding: 16px 18px !important;
+}
+
+:root[data-theme="light"] .today-clean .screen-title-block h1,
+:root[data-theme="light"] .today-clean .screen-title-block span,
+:root[data-theme="light"] .today-clean .screen-title-block p,
+:root[data-theme="light"] .today-clean .hero-card h1,
+:root[data-theme="light"] .today-clean .hero-card p,
+:root[data-theme="light"] .today-clean .hero-card span,
+:root[data-theme="light"] .today-clean .panel h2,
+:root[data-theme="light"] .today-clean .panel h3,
+:root[data-theme="light"] .today-clean .panel b,
+:root[data-theme="light"] .today-clean .panel strong,
+:root[data-theme="light"] .today-clean .stat-card strong,
+:root[data-theme="light"] .today-clean .stat-card b {
+  color: var(--klik-card-text) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .today-clean .section-head p,
+:root[data-theme="light"] .today-clean .soft-text,
+:root[data-theme="light"] .today-clean .panel p,
+:root[data-theme="light"] .today-clean .panel small,
+:root[data-theme="light"] .today-clean .panel span,
+:root[data-theme="light"] .today-clean .stat-top,
+:root[data-theme="light"] .today-clean .eyebrow,
+:root[data-theme="light"] .today-clean .hero-badge,
+:root[data-theme="light"] .today-clean .event-row p,
+:root[data-theme="light"] .today-clean .channel-row span,
+:root[data-theme="light"] .today-clean .category-row span,
+:root[data-theme="light"] .today-clean .forecast-grid span,
+:root[data-theme="light"] .today-clean .forecast-grid p {
+  color: var(--klik-card-muted) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .today-clean .forecast-grid div,
+:root[data-theme="light"] .today-clean .event-row,
+:root[data-theme="light"] .today-clean .insight-row,
+:root[data-theme="light"] .today-clean .plan-row,
+:root[data-theme="light"] .today-clean .risk-line,
+:root[data-theme="light"] .today-clean .channel-row,
+:root[data-theme="light"] .today-clean .category-row,
+:root[data-theme="light"] .today-clean .dish-line,
+:root[data-theme="light"] .today-clean .waiter-row,
+:root[data-theme="light"] .today-clean .control-row,
+:root[data-theme="light"] .today-clean .ai-note,
+:root[data-theme="light"] .today-clean .empty-state {
+  color: #ffffff !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.14), rgba(255,255,255,.06)) !important;
+  border: 1px solid rgba(206, 233, 255, .22) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+
+:root[data-theme="light"] .today-clean .forecast-grid b,
+:root[data-theme="light"] .today-clean .event-row b,
+:root[data-theme="light"] .today-clean .channel-row b,
+:root[data-theme="light"] .today-clean .channel-row strong,
+:root[data-theme="light"] .today-clean .category-row b,
+:root[data-theme="light"] .today-clean .category-row strong,
+:root[data-theme="light"] .today-clean .ai-note b,
+:root[data-theme="light"] .today-clean .empty-state h3 {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .today-clean .channel-row em,
+:root[data-theme="light"] .today-clean .category-row em {
+  color: #a9dcff !important;
+  opacity: 1 !important;
+  font-style: normal !important;
+  font-weight: 800 !important;
+}
+
+:root[data-theme="light"] .today-clean .period-switch {
+  background: linear-gradient(145deg, #061f4a, #0f68d8) !important;
+  border: 1px solid rgba(176, 219, 255, .26) !important;
+}
+
+:root[data-theme="light"] .today-clean .period-switch button {
+  color: rgba(238, 247, 255, .84) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .today-clean .period-switch button.active {
+  color: #05204a !important;
+  background: linear-gradient(135deg, #e6f4ff, #7fc6ff) !important;
+}
+
+/* Make restaurant dashboard lists readable even outside Today, but keep platform cards untouched. */
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) {
+  color: #ffffff !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(126, 198, 255, .22), transparent 34%),
+    linear-gradient(145deg, #061f4a 0%, #0a3a86 52%, #1676e6 100%) !important;
+  border-color: rgba(176, 219, 255, .24) !important;
+}
+
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) h2,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) h3,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) b,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) strong {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) p,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) span,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) small,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .soft-text,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .section-head p {
+  color: rgba(235, 246, 255, .82) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .forecast-grid div,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .channel-row,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .category-row,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .event-row,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .dish-line,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .waiter-row,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .ai-note,
+:root[data-theme="light"] .screen-stack:not(.platform-console-clean):not(.platform-console-panel) > .panel:not(.platform-console-panel) .mini-card {
+  background: linear-gradient(145deg, rgba(255,255,255,.14), rgba(255,255,255,.06)) !important;
+  border-color: rgba(206, 233, 255, .22) !important;
+}
+
+@media (max-width: 430px) {
+  :root[data-theme="light"] .today-clean .hero-card,
+  :root[data-theme="light"] .today-clean .revenue-hero-card {
+    grid-template-columns: 1fr !important;
+  }
+  :root[data-theme="light"] .today-clean .orb-progress {
+    justify-self: start !important;
+    width: 78px !important;
+    height: 78px !important;
+  }
+  :root[data-theme="light"] .today-clean .forecast-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  :root[data-theme="light"] .today-clean .forecast-grid div {
+    min-height: 104px !important;
+    padding: 10px !important;
+  }
+}
