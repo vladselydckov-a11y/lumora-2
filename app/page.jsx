@@ -123,9 +123,9 @@ function planLabel(period) {
 }
 
 function heroTitle(period) {
-  if (period === 'week') return 'Контроль недели';
-  if (period === 'month') return 'Контроль месяца';
-  return 'Сегодняшний контроль';
+  if (period === 'week') return 'Итоги недели';
+  if (period === 'month') return 'Итоги месяца';
+  return 'Итоги дня';
 }
 
 function toneClass(level) {
@@ -709,15 +709,19 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const guests = metricRaw(summary, 'guests');
   const plan = activePlan(settings, period);
   const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
-  const visible = ['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts']
+  const visible = ['checks', 'avgCheck', 'guests', 'avgGuest']
     .filter((key) => settings.visible?.[key] !== false)
     .map((key) => metric(summary, key));
+  const extraMetrics = ['foodcost', 'discounts']
+    .filter((key) => settings.visible?.[key] !== false)
+    .map((key) => metric(summary, key))
+    .filter(Boolean);
 
   return (
-    <div className="screen-stack">
-      <div className="hero-card">
+    <div className="screen-stack today-clean">
+      <div className="hero-card revenue-hero-card">
         <div>
-          <span className="eyebrow">{heroTitle(period)}</span>
+          <div className="hero-headline-row"><span className="eyebrow">{heroTitle(period)}</span><span className="hero-badge">● {summary?.generatedAt || '—'} · авто-обновление</span></div>
           <h1>{money(revenue)}</h1>
           <p>{summary?.isEmptyPeriod ? 'Продаж за выбранный период пока нет.' : `${planLabel(period)} ${money(plan)} выполнен на ${planPercent}%.`}</p>
         </div>
@@ -729,9 +733,15 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <PeriodSwitch period={period} setPeriod={setPeriod} />
 
-      <div className="stat-grid">
+      <div className="stat-grid main-kpi-grid">
         {visible.map((item) => <StatCard key={item?.key} item={item} trend={summary?.week} />)}
       </div>
+
+      {extraMetrics.length ? (
+        <div className="stat-grid secondary-stat-grid">
+          {extraMetrics.map((item) => <StatCard key={item?.key} item={item} trend={summary?.week} />)}
+        </div>
+      ) : null}
 
       <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
         <div className="forecast-grid">
@@ -1535,7 +1545,7 @@ function NoAccessScreen({ authInfo }) {
           <span>!</span>
           <div>
             <b>Этот аккаунт пока не привязан к ресторану</b>
-            <p>{isTelegramAccessMode(authInfo) ? `Telegram: @${user.username || 'без username'} · ID ${user.id || '—'}` : 'Открой приложение из Telegram Mini App, чтобы система увидела аккаунт.'}</p>
+            <p>{isTelegramAccessMode(authInfo) ? `Telegram: @${user.username || 'без username'} · доступ активен` : 'Открой приложение из Telegram Mini App, чтобы система увидела аккаунт.'}</p>
           </div>
         </div>
         <p className="muted-line">Владелец бизнеса должен добавить сотрудника в разделе “Управление → Доступы”. Для тестов dev-режим в браузере не блокируется.</p>
@@ -1617,7 +1627,7 @@ function AccessModeBlock({ authInfo }) {
       <div className="control-row">
         <div>
           <b>{getAccessModeTitle(authInfo)}</b>
-          <p>{isTelegramAccessMode(authInfo) ? `@${user.username || 'telegram'} · ID ${user.id || '—'}` : 'Браузер без Telegram: открыт dev/admin-режим, дашборд не закрыт.'}</p>
+          <p>{isTelegramAccessMode(authInfo) ? `@${user.username || 'telegram'} · доступ активен` : 'Браузер без Telegram: открыт dev/admin-режим, дашборд не закрыт.'}</p>
         </div>
         <span>{authInfo?.mode || 'demo'}</span>
       </div>
@@ -2455,7 +2465,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   }
 
   return (
-    <Section title="Кабинет платформы" subtitle="внутренний экран КЛИК: клиенты, рестораны, подписки, владельцы и платежи">
+    <Section className="platform-console-panel" title="Кабинет платформы" subtitle="внутренний экран КЛИК: клиенты, рестораны, подписки, владельцы и платежи">
       {canLoadWithTelegram ? (
         <div className="control-row">
           <div><b>Доступ владельца платформы активен</b><p>Кабинет загружается по Telegram ID, ключ в интерфейсе не нужен.</p></div>
@@ -2477,7 +2487,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <div className="mini-card"><small>Интеграции</small><b>{connectedIikoRestaurants}/{allBusinessRestaurants.length}</b><p>{integrationProblems ? `${integrationProblems} требуют внимания` : 'критичных ошибок нет'}</p></div>
       </div>
 
-      <div className="period-switch" style={{ marginTop: 16 }}>
+      <div className="period-switch platform-nav" style={{ marginTop: 16 }}>
         <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Обзор</button>
         <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')}>Контроль</button>
         <button className={tab === 'onboarding' ? 'active' : ''} onClick={() => setTab('onboarding')}>Подключение</button>
@@ -2588,7 +2598,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
               <span>{restaurant.data_status === 'live' ? '✓' : restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' ? '!' : '•'}</span>
               <div style={{ width: '100%' }}>
                 <b>{business.name} · {restaurant.name || restaurant.id}</b>
-                <p>id: {restaurant.id} · город: {restaurant.city || business.city || '—'} · последняя синхронизация: {formatSyncDate(restaurant.last_sync_at)}</p>
+                <p>{restaurant.city || business.city || 'Город'} · последняя синхронизация: {formatSyncDate(restaurant.last_sync_at)}</p>
                 <div className="mini-grid" style={{ marginTop: 10 }}>
                   <div className="mini-card"><small>iiko</small><b>{integrationStatusLabel(restaurant.iiko_status)}</b><p>источник данных</p></div>
                   <div className="mini-card"><small>n8n</small><b>{integrationStatusLabel(restaurant.n8n_status)}</b><p>автоматизация</p></div>
@@ -2726,7 +2736,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
                 <label><span>Telegram username</span><input value={ownerUsername} onChange={(e) => setOwnerUsername(e.target.value)} placeholder="@client_owner" /></label>
                 <div className="control-row"><div><b>Роль в бизнесе</b><p>владелец бизнеса или сотрудник</p></div><select value={ownerRole} onChange={(e) => setOwnerRole(e.target.value)}><option value="business_owner">владелец бизнеса</option><option value="business_admin">администратор бизнеса</option><option value="accountant">бухгалтер / финансы</option><option value="viewer">только просмотр</option></select></div>
                 {selectedBusinessRestaurants.length ? <div style={{ margin: '10px 0' }}><span style={{ color: 'var(--muted)', fontSize: 13 }}>Дать доступ к ресторанам</span>{selectedBusinessRestaurants.map((restaurant) => (
-                  <div className="control-row" key={`owner-pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · id: {restaurant.id}</p></div><input type="checkbox" checked={ownerRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id, setOwnerRestaurantIds)} /></div>
+                  <div className="control-row" key={`owner-pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · доступ к точке</p></div><input type="checkbox" checked={ownerRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id, setOwnerRestaurantIds)} /></div>
                 ))}</div> : null}
                 <button className="primary-btn" onClick={addOwnerOrUser} disabled={loading}>Добавить в бизнес и выдать доступ</button>
               </div>
@@ -2869,7 +2879,7 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <div className="control-row"><div><b>Подписка</b><p>trial, оплачено или просрочено</p></div><select value={newSubscriptionStatus} onChange={(e) => setNewSubscriptionStatus(e.target.value)}><option value="trial">trial</option><option value="active">оплачено</option><option value="overdue">просрочено</option><option value="cancelled">отключено</option></select></div>
         <div className="control-row"><div><b>Статус бизнеса</b><p>можно поставить на паузу</p></div><select value={newBusinessStatus} onChange={(e) => setNewBusinessStatus(e.target.value)}><option value="active">активен</option><option value="paused">пауза</option><option value="archived">архив</option></select></div>
         {restaurants.length ? <div style={{ margin: '10px 0' }}><span style={{ color: 'var(--muted)', fontSize: 13 }}>Привязать существующие рестораны</span>{restaurants.map((restaurant) => (
-          <div className="control-row" key={`pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · id: {restaurant.id}</p></div><input type="checkbox" checked={selectedRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id)} /></div>
+          <div className="control-row" key={`pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · доступ к точке</p></div><input type="checkbox" checked={selectedRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id)} /></div>
         ))}</div> : null}
         <label><span>Заметка</span><textarea value={newBusinessNotes} onChange={(e) => setNewBusinessNotes(e.target.value)} placeholder="Например: оплатил пилот, iiko подключить позже" rows={3} /></label>
         <button className="primary-btn" onClick={addBusiness} disabled={loading || !hasPlatformGate}>Добавить бизнес</button>
