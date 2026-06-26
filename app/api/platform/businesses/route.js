@@ -47,6 +47,21 @@ function cleanPaymentStatus(value) {
   return ['pending', 'paid', 'overdue', 'cancelled', 'refunded'].includes(status) ? status : 'pending';
 }
 
+function cleanIikoStatus(value) {
+  const status = String(value || 'not_connected').trim().toLowerCase();
+  return ['not_connected', 'connected', 'error', 'paused'].includes(status) ? status : 'not_connected';
+}
+
+function cleanWorkflowStatus(value) {
+  const status = String(value || 'not_connected').trim().toLowerCase();
+  return ['not_connected', 'active', 'error', 'paused'].includes(status) ? status : 'not_connected';
+}
+
+function cleanDataStatus(value) {
+  const status = String(value || 'not_connected').trim().toLowerCase();
+  return ['not_connected', 'live', 'stale', 'error', 'paused'].includes(status) ? status : 'not_connected';
+}
+
 function cleanBusinessRole(value) {
   const role = String(value || 'business_owner').trim().toLowerCase();
   return ['business_owner', 'business_admin', 'accountant', 'viewer'].includes(role) ? role : 'business_owner';
@@ -171,7 +186,7 @@ async function addPendingInvite({ username, restaurantId, role = 'owner', create
 }
 
 async function getPlatformData() {
-  const [businessesRaw, linksRaw, restaurantsRaw, adminsRaw, usersRaw, paymentsRaw, accessRaw, invitesRaw] = await Promise.all([
+  const [businessesRaw, linksRaw, restaurantsRaw, adminsRaw, usersRaw, paymentsRaw, accessRaw, invitesRaw, integrationsRaw] = await Promise.all([
     fetchOptional('/rest/v1/platform_businesses?select=*&order=created_at.desc'),
     fetchOptional('/rest/v1/platform_business_restaurants?select=*&order=created_at.asc'),
     fetchOptional('/rest/v1/restaurants?select=id,name,city,is_active&order=name.asc'),
@@ -179,7 +194,8 @@ async function getPlatformData() {
     fetchOptional('/rest/v1/platform_business_users?select=*&status=eq.active&order=created_at.desc'),
     fetchOptional('/rest/v1/platform_payments?select=*&order=created_at.desc'),
     fetchOptional('/rest/v1/app_user_restaurant_access?select=*&status=eq.active&order=created_at.desc'),
-    fetchOptional('/rest/v1/app_pending_invites?select=*&status=eq.pending&order=created_at.desc')
+    fetchOptional('/rest/v1/app_pending_invites?select=*&status=eq.pending&order=created_at.desc'),
+    fetchOptional('/rest/v1/platform_restaurant_integrations?select=*&order=updated_at.desc')
   ]);
 
   const businesses = businessesRaw;
@@ -190,16 +206,31 @@ async function getPlatformData() {
   const payments = paymentsRaw;
   const access = accessRaw;
   const invites = invitesRaw;
+  const integrations = integrationsRaw;
   const restaurantMap = new Map(restaurants.map((item) => [String(item.id), item]));
+  const integrationMap = new Map(integrations.map((item) => [String(item.restaurant_id), item]));
 
   const enrichedBusinesses = businesses.map((business) => {
     const businessId = String(business.id);
     const businessLinks = links.filter((link) => String(link.business_id) === businessId);
-    const businessRestaurants = businessLinks.map((link) => restaurantMap.get(String(link.restaurant_id)) || {
-      id: link.restaurant_id,
-      name: link.restaurant_id,
-      city: '',
-      is_active: false
+    const businessRestaurants = businessLinks.map((link) => {
+      const restaurantId = String(link.restaurant_id);
+      const baseRestaurant = restaurantMap.get(restaurantId) || {
+        id: link.restaurant_id,
+        name: link.restaurant_id,
+        city: '',
+        is_active: false
+      };
+      const integration = integrationMap.get(restaurantId) || null;
+      return {
+        ...baseRestaurant,
+        integration,
+        iiko_status: integration?.iiko_status || 'not_connected',
+        n8n_status: integration?.n8n_status || 'not_connected',
+        data_status: integration?.data_status || 'not_connected',
+        last_sync_at: integration?.last_sync_at || null,
+        sync_interval_minutes: integration?.sync_interval_minutes || null
+      };
     });
     const restaurantIds = businessRestaurants.map((item) => String(item.id));
     const businessPayments = payments.filter((payment) => String(payment.business_id) === businessId);
@@ -212,6 +243,9 @@ async function getPlatformData() {
     const businessAccess = access.filter((item) => restaurantIds.includes(String(item.restaurant_id)));
     const businessInvites = invites.filter((item) => restaurantIds.includes(String(item.restaurant_id)));
     const users = businessUsers.filter((user) => String(user.business_id) === businessId);
+    const connectedIntegrations = businessRestaurants.filter((restaurant) => restaurant.iiko_status === 'connected' && restaurant.n8n_status === 'active').length;
+    const integrationErrors = businessRestaurants.filter((restaurant) => restaurant.iiko_status === 'error' || restaurant.n8n_status === 'error' || restaurant.data_status === 'error').length;
+    const liveDataRestaurants = businessRestaurants.filter((restaurant) => restaurant.data_status === 'live').length;
 
     return {
       ...business,
@@ -222,6 +256,9 @@ async function getPlatformData() {
       payments_count: businessPayments.length,
       paid_total: paidTotal,
       pending_total: pendingTotal,
+      integrations_connected_count: connectedIntegrations,
+      integrations_error_count: integrationErrors,
+      live_data_restaurants_count: liveDataRestaurants,
       access_count: businessAccess.length,
       invites_count: businessInvites.length,
       last_payment: businessPayments[0] || null
@@ -234,6 +271,7 @@ async function getPlatformData() {
     admins,
     payments,
     business_users: businessUsers,
+    integrations,
     access,
     invites
   };
@@ -439,6 +477,44 @@ async function addBusinessUser(body) {
   return { user, invites: createdInvites };
 }
 
+
+async function updateRestaurantIntegration(body = {}) {
+  const restaurantId = cleanText(body.restaurant_id || body.restaurantId);
+  if (!restaurantId) throw new Error('restaurant_id is required');
+
+  const payload = {
+    business_id: cleanText(body.business_id || body.businessId) || null,
+    restaurant_id: restaurantId,
+    iiko_status: cleanIikoStatus(body.iiko_status || body.iikoStatus),
+    n8n_status: cleanWorkflowStatus(body.n8n_status || body.n8nStatus),
+    data_status: cleanDataStatus(body.data_status || body.dataStatus),
+    last_sync_at: body.last_sync_at || body.lastSyncAt || null,
+    sync_interval_minutes: Number(body.sync_interval_minutes || body.syncIntervalMinutes || 5) || 5,
+    workflow_url: body.workflow_url || body.workflowUrl || null,
+    iiko_base_url: body.iiko_base_url || body.iikoBaseUrl || null,
+    connection_notes: body.connection_notes || body.connectionNotes || null,
+    is_enabled: body.is_enabled === undefined ? true : Boolean(body.is_enabled),
+    updated_at: new Date().toISOString()
+  };
+
+  const existing = await supabaseFetch(`/rest/v1/platform_restaurant_integrations?select=*&restaurant_id=eq.${encode(restaurantId)}&limit=1`).catch(() => []);
+
+  if (Array.isArray(existing) && existing[0]) {
+    const updated = await supabaseFetch(`/rest/v1/platform_restaurant_integrations?restaurant_id=eq.${encode(restaurantId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+    return Array.isArray(updated) ? updated[0] : { ...existing[0], ...payload };
+  }
+
+  const inserted = await supabaseFetch('/rest/v1/platform_restaurant_integrations', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }).catch(() => null);
+
+  return Array.isArray(inserted) ? inserted[0] : payload;
+}
+
 export async function GET(request) {
   const gate = await assertPlatformAccess(request);
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
@@ -465,6 +541,8 @@ export async function POST(request) {
       result = await createBusinessWithRestaurants(body);
     } else if (action === 'add_payment') {
       result = { payment: await addPayment(body) };
+    } else if (action === 'update_restaurant_integration' || action === 'set_integration_status') {
+      result = { integration: await updateRestaurantIntegration(body) };
     } else if (action === 'add_business_user' || action === 'assign_owner') {
       result = await addBusinessUser(body);
     } else if (action === 'link_restaurants') {
