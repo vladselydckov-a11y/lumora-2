@@ -2051,6 +2051,16 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const [quickSubStatus, setQuickSubStatus] = useState('active');
   const [quickBusinessStatus, setQuickBusinessStatus] = useState('active');
 
+  const [onboardBusinessName, setOnboardBusinessName] = useState('');
+  const [onboardCity, setOnboardCity] = useState('Тюмень');
+  const [onboardOwnerUsername, setOnboardOwnerUsername] = useState('');
+  const [onboardPlanName, setOnboardPlanName] = useState('pilot');
+  const [onboardSubscriptionStatus, setOnboardSubscriptionStatus] = useState('trial');
+  const [onboardRestaurantName, setOnboardRestaurantName] = useState('');
+  const [onboardRestaurantId, setOnboardRestaurantId] = useState('');
+  const [onboardPaymentAmount, setOnboardPaymentAmount] = useState('');
+  const [onboardNotes, setOnboardNotes] = useState('');
+
   const businesses = Array.isArray(data.businesses) ? data.businesses : [];
   const restaurants = Array.isArray(data.restaurants) ? data.restaurants : [];
   const admins = Array.isArray(data.admins) ? data.admins : [];
@@ -2267,6 +2277,58 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
     }
   }
 
+
+  async function onboardClient() {
+    const businessName = onboardBusinessName.trim();
+    const restaurantName = onboardRestaurantName.trim() || businessName;
+    const ownerUsername = normalizeInputUsername(onboardOwnerUsername);
+    const amount = Number(onboardPaymentAmount || 0);
+
+    if (!businessName) {
+      setMessage('Введи название бизнеса клиента.');
+      return;
+    }
+    if (!restaurantName) {
+      setMessage('Введи название первого ресторана.');
+      return;
+    }
+    if (!ownerUsername) {
+      setMessage('Введи Telegram username владельца бизнеса.');
+      return;
+    }
+
+    const result = await callPlatform({
+      action: 'create_business_with_restaurants',
+      name: businessName,
+      city: onboardCity.trim() || 'Тюмень',
+      owner_username: ownerUsername,
+      plan_name: onboardPlanName,
+      status: 'active',
+      subscription_status: onboardSubscriptionStatus,
+      notes: onboardNotes.trim(),
+      initial_payment_amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      payment_status: amount > 0 ? 'paid' : 'pending',
+      payment_notes: amount > 0 ? 'Стартовый платёж при подключении клиента' : '',
+      restaurants_to_create: [{
+        id: onboardRestaurantId.trim(),
+        name: restaurantName,
+        city: onboardCity.trim() || 'Тюмень',
+        is_active: true
+      }]
+    }, 'Клиент создан: бизнес, ресторан, владелец и стартовый доступ подготовлены.');
+
+    if (result?.ok) {
+      setOnboardBusinessName('');
+      setOnboardOwnerUsername('');
+      setOnboardRestaurantName('');
+      setOnboardRestaurantId('');
+      setOnboardPaymentAmount('');
+      setOnboardNotes('');
+      if (result.business?.id) setSelectedBusinessId(result.business.id);
+      setTab('business');
+    }
+  }
+
   function openBusiness(business) {
     setSelectedBusinessId(business.id);
     setSelectedRestaurantIds((business.restaurants || []).map((item) => item.id));
@@ -2299,12 +2361,53 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
 
       <div className="period-switch" style={{ marginTop: 16 }}>
         <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Обзор</button>
+        <button className={tab === 'onboarding' ? 'active' : ''} onClick={() => setTab('onboarding')}>Подключение</button>
         <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Клиенты</button>
         <button className={tab === 'business' ? 'active' : ''} onClick={() => setTab('business')}>Бизнес</button>
         <button className={tab === 'restaurants' ? 'active' : ''} onClick={() => setTab('restaurants')}>Рестораны</button>
         <button className={tab === 'subscriptions' ? 'active' : ''} onClick={() => setTab('subscriptions')}>Подписки</button>
         <button className={tab === 'owners' ? 'active' : ''} onClick={() => setTab('owners')}>Владельцы</button>
       </div>
+
+      {tab === 'onboarding' ? (
+        <div style={{ marginTop: 14 }}>
+          <div className="event-row good">
+            <span>➜</span>
+            <div>
+              <b>Быстрое подключение нового клиента</b>
+              <p>За один шаг создаём бизнес, первый ресторан, владельца бизнеса, доступы и при необходимости стартовый платёж. iiko и статистику не трогаем.</p>
+            </div>
+          </div>
+
+          <div className="mini-grid" style={{ marginTop: 12 }}>
+            <div className="mini-card"><small>Шаг 1</small><b>Бизнес</b><p>название сети или ресторана</p></div>
+            <div className="mini-card"><small>Шаг 2</small><b>Точка</b><p>первый ресторан внутри клиента</p></div>
+            <div className="mini-card"><small>Шаг 3</small><b>Владелец</b><p>Telegram username получает доступ</p></div>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <h3 style={{ margin: '0 0 10px' }}>Создать клиента в платформе</h3>
+            <label><span>Название бизнеса / сети</span><input value={onboardBusinessName} onChange={(e) => setOnboardBusinessName(e.target.value)} placeholder="Например: Кофейня Север / сеть" /></label>
+            <label><span>Город</span><input value={onboardCity} onChange={(e) => setOnboardCity(e.target.value)} placeholder="Тюмень" /></label>
+            <label><span>Telegram владельца бизнеса</span><input value={onboardOwnerUsername} onChange={(e) => setOnboardOwnerUsername(e.target.value)} placeholder="@client_owner" /></label>
+            <label><span>Первый ресторан</span><input value={onboardRestaurantName} onChange={(e) => setOnboardRestaurantName(e.target.value)} placeholder="Если пусто, возьмём название бизнеса" /></label>
+            <label><span>ID ресторана</span><input value={onboardRestaurantId} onChange={(e) => setOnboardRestaurantId(e.target.value)} placeholder="например: coffee_sever_1, можно оставить пустым" /></label>
+            <div className="control-row"><div><b>Тариф</b><p>для внутреннего контроля платформы</p></div><select value={onboardPlanName} onChange={(e) => setOnboardPlanName(e.target.value)}><option value="pilot">pilot</option><option value="basic">basic</option><option value="standard">standard</option><option value="network">network</option></select></div>
+            <div className="control-row"><div><b>Подписка</b><p>что увидишь в кабинете платформы</p></div><select value={onboardSubscriptionStatus} onChange={(e) => setOnboardSubscriptionStatus(e.target.value)}><option value="trial">trial</option><option value="active">оплачено</option><option value="overdue">просрочено</option><option value="cancelled">отключено</option></select></div>
+            <label><span>Стартовый платёж, ₽</span><input value={onboardPaymentAmount} onChange={(e) => setOnboardPaymentAmount(e.target.value)} placeholder="например: 15000, можно пусто" inputMode="numeric" /></label>
+            <label><span>Заметка</span><textarea value={onboardNotes} onChange={(e) => setOnboardNotes(e.target.value)} placeholder="Например: пилот, iiko подключить после оплаты" rows={3} /></label>
+            <button className="primary-btn" onClick={onboardClient} disabled={loading || !hasPlatformGate}>Создать клиента и выдать владельцу доступ</button>
+          </div>
+
+          <div className="event-row warn" style={{ marginTop: 14 }}>
+            <span>!</span>
+            <div>
+              <b>После создания клиента</b>
+              <p>Ресторатор откроет этот же Mini App из Telegram и увидит только свой бизнес. Реальные iiko-данные подключаем отдельно через n8n/Supabase, когда клиент уже добавлен в платформу.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {tab === 'overview' ? (
         <div style={{ marginTop: 14 }}>
@@ -2925,6 +3028,8 @@ export default function Page() {
     return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} />;
   }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo]);
 
+  const isOwnerConsole = isPlatformOwnerUser(authInfo) && tab === 'platform';
+
   return (
     <main className="lumora-shell">
       <div className="ambient one" />
@@ -2932,17 +3037,42 @@ export default function Page() {
       <div className="app-frame">
         {shouldBlockDashboard(authInfo, settings) ? (
           <div className="content no-access-only">{screen}</div>
+        ) : isOwnerConsole ? (
+          <>
+            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+              <section style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <small style={{ color: 'var(--muted)' }}>Главный экран владельца платформы</small>
+                    <h1 style={{ margin: '4px 0 6px', fontSize: 24 }}>Панель КЛИК</h1>
+                    <p style={{ margin: 0, color: 'var(--muted)' }}>Здесь ты управляешь клиентами, подписками, владельцами и ресторанами. В статистику ресторана проваливаешься только после выбора бизнеса или точки.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => setTab('today')}>Открыть текущий дашборд</button>
+                    <button onClick={() => setTab('control')}>Настройки</button>
+                  </div>
+                </div>
+                <div className="mini-grid">
+                  <div className="mini-card"><small>Текущий контекст</small><b>{viewingRestaurantName}</b><p>дашборд откроется только после выбора ресторана</p></div>
+                  <div className="mini-card"><small>Твой режим</small><b>platform_owner</b><p>видишь всех клиентов и можешь проваливаться в их точки</p></div>
+                  <div className="mini-card"><small>Клиентский режим</small><b>изолирован</b><p>ресторатор видит только свой бизнес и сотрудников</p></div>
+                </div>
+              </section>
+            </div>
+            <div className="content">{screen}</div>
+            {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
+          </>
         ) : (
           <>
             <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
             <TopTabs tab={tab} setTab={setTab} authInfo={authInfo} />
-            {(isPlatformOwnerUser(authInfo) || getBusinessCabinetBusinesses(authInfo).length) && tab !== 'platform' ? (
+            {(isPlatformOwnerUser(authInfo) || getBusinessCabinetBusinesses(authInfo).length) ? (
               <div style={{ margin: '0 18px 12px', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 18, background: 'var(--panel-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                 <div>
-                  <small>{isPlatformOwnerUser(authInfo) ? 'Режим владельца платформы' : 'Кабинет клиента'}</small>
+                  <small>{isPlatformOwnerUser(authInfo) ? 'Ты внутри выбранного ресторана клиента' : 'Кабинет клиента'}</small>
                   <b>Открыт дашборд: {viewingRestaurantName}</b>
                 </div>
-                {isPlatformOwnerUser(authInfo) ? <button onClick={() => setTab('platform')}>Кабинет платформы</button> : <button onClick={() => setTab('client')}>Мой бизнес</button>}
+                {isPlatformOwnerUser(authInfo) ? <button onClick={() => setTab('platform')}>Назад в панель КЛИК</button> : <button onClick={() => setTab('client')}>Мой бизнес</button>}
               </div>
             ) : null}
             <div className="content">{screen}</div>
