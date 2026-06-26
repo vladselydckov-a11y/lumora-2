@@ -1422,6 +1422,17 @@ function canManageBusinessEmployees(authInfo) {
   return ['business_owner', 'business_admin'].includes(role) || Boolean(permissions.can_manage_employees);
 }
 
+function isBusinessOwnerConsoleUser(authInfo) {
+  if (!hasAnyProductAccess(authInfo)) return false;
+  if (isPlatformOwnerUser(authInfo)) return false;
+  const businesses = getBusinessCabinetBusinesses(authInfo);
+  if (!businesses.length) return false;
+  const role = getPrimaryBusinessRole(authInfo);
+  if (['business_owner', 'business_admin'].includes(role)) return true;
+  const permissions = getCurrentPermissions(authInfo);
+  return Boolean(permissions.can_manage_employees);
+}
+
 function getVisibleTabs(authInfo) {
   if (isTelegramAccessMode(authInfo) && !hasAnyProductAccess(authInfo)) return [];
 
@@ -1438,7 +1449,7 @@ function getVisibleTabs(authInfo) {
 
   if (getBusinessCabinetBusinesses(authInfo).length) {
     return [
-      { id: 'client', label: 'Мой бизнес' },
+      ...(isBusinessOwnerConsoleUser(authInfo) ? [{ id: 'client', label: 'Мой бизнес' }] : []),
       ...dashboardTabs,
       ...(canSeeSection(authInfo, 'control') ? [{ id: 'control', label: 'Управление' }] : [])
     ];
@@ -3029,6 +3040,10 @@ export default function Page() {
   }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo]);
 
   const isOwnerConsole = isPlatformOwnerUser(authInfo) && tab === 'platform';
+  const isClientConsole = isBusinessOwnerConsoleUser(authInfo) && tab === 'client';
+  const clientBusinesses = getBusinessCabinetBusinesses(authInfo);
+  const clientRestaurantsCount = clientBusinesses.reduce((sum, business) => sum + (Array.isArray(business.restaurants) ? business.restaurants.length : 0), 0);
+  const clientTeamCount = getBusinessCabinetUsers(authInfo).length;
 
   return (
     <main className="lumora-shell">
@@ -3056,6 +3071,31 @@ export default function Page() {
                   <div className="mini-card"><small>Текущий контекст</small><b>{viewingRestaurantName}</b><p>дашборд откроется только после выбора ресторана</p></div>
                   <div className="mini-card"><small>Твой режим</small><b>platform_owner</b><p>видишь всех клиентов и можешь проваливаться в их точки</p></div>
                   <div className="mini-card"><small>Клиентский режим</small><b>изолирован</b><p>ресторатор видит только свой бизнес и сотрудников</p></div>
+                </div>
+              </section>
+            </div>
+            <div className="content">{screen}</div>
+            {showNotifications ? <NotificationsModal summary={summary} close={() => setShowNotifications(false)} /> : null}
+          </>
+        ) : isClientConsole ? (
+          <>
+            <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+              <section style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 24, background: 'var(--panel)', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <small style={{ color: 'var(--muted)' }}>Главный экран владельца бизнеса</small>
+                    <h1 style={{ margin: '4px 0 6px', fontSize: 24 }}>Мой бизнес</h1>
+                    <p style={{ margin: 0, color: 'var(--muted)' }}>Ресторатор сначала видит свою сеть, рестораны и сотрудников. В статистику он проваливается только после выбора своей точки.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => setTab('today')}>Открыть дашборд</button>
+                    <button onClick={() => setTab('control')}>Настройки</button>
+                  </div>
+                </div>
+                <div className="mini-grid">
+                  <div className="mini-card"><small>Бизнесов</small><b>{clientBusinesses.length}</b><p>доступ только к своим компаниям</p></div>
+                  <div className="mini-card"><small>Ресторанов</small><b>{clientRestaurantsCount}</b><p>можно открыть каждую свою точку</p></div>
+                  <div className="mini-card"><small>Сотрудников</small><b>{clientTeamCount}</b><p>владелец сам выдаёт роли и разделы</p></div>
                 </div>
               </section>
             </div>
