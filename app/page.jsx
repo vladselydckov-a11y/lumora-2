@@ -703,6 +703,91 @@ function DataReadinessBlock({ summary }) {
   );
 }
 
+
+function RestaurantDashboardPolishBlock({ summary, settings, setTab, period }) {
+  const revenue = metricRaw(summary, 'revenue');
+  const checks = metricRaw(summary, 'checks');
+  const guests = metricRaw(summary, 'guests');
+  const avgCheck = metric(summary, 'avgCheck');
+  const avgGuest = metric(summary, 'avgGuest');
+  const plan = activePlan(settings, period);
+  const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
+  const discount = summary?.discountAnalytics || {};
+  const risk = riskScoreValue(summary);
+  const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
+  const topDish = summary?.topDishes?.[0];
+  const gap = Math.max(plan - revenue, 0);
+  const planTone = planPercent >= 100 ? 'good' : planPercent >= 80 ? 'warn' : 'bad';
+  const flowText = guests ? `${num(guests)} гостей` : checks ? `${num(checks)} чеков` : 'нет продаж';
+  const nextActions = [
+    gap > 0 ? `Добрать до плана ${money(gap)}. Сфокусировать смену на пике ${bestHour?.label || 'вечернего трафика'}.` : 'План близко или закрыт. Важно удержать темп и не разгонять скидки.',
+    discount.percentText ? `Проверить скидки: сейчас ${discount.percentText}${discount.worstChannel ? `, зона внимания ${discount.worstChannel.name}` : ''}.` : 'Скидки без явного сигнала, держим обычный контроль.',
+    topDish ? `Меню: продвигать ${topDish.name}, сейчас даёт ${topDish.revenue}.` : 'Меню-фокус появится после загрузки блюд.',
+  ];
+
+  return (
+    <Section title="Сводка руководителя" subtitle="короткий управленческий экран без лишней технички" action={<button onClick={() => setTab('reports')}>детальный отчёт</button>}>
+      <div className="mini-grid">
+        <div className={`mini-card ${planTone}`}><small>План-факт</small><b>{planPercent}%</b><p>{gap > 0 ? `осталось ${money(gap)}` : 'план выполнен или близко'}</p></div>
+        <div className="mini-card"><small>Средний чек</small><b>{avgCheck?.value || '—'}</b><p>{avgGuest?.value ? `на гостя ${avgGuest.value}` : 'контроль чека'}</p></div>
+        <div className="mini-card"><small>Поток</small><b>{flowText}</b><p>{checks ? `${num(checks)} чеков` : 'чеков пока нет'}</p></div>
+        <div className={`mini-card ${risk > 70 ? 'bad' : risk > 40 ? 'warn' : 'good'}`}><small>Риск</small><b>{risk}/100</b><p>{risk > 70 ? 'нужна реакция' : risk > 40 ? 'держать контроль' : 'спокойно'}</p></div>
+      </div>
+      <div className="event-list">
+        {nextActions.map((item, index) => (
+          <div className={`event-row ${index === 0 ? planTone : 'neutral'}`} key={`next-action-${index}`}>
+            <span>{index + 1}</span>
+            <div><b>{index === 0 ? 'Главное действие' : index === 1 ? 'Контроль скидок' : 'Меню и продажи'}</b><p>{item}</p></div>
+          </div>
+        ))}
+      </div>
+      <div className="quick-grid">
+        <button onClick={() => setTab('risks')}>Риски</button>
+        <button onClick={() => setTab('plan')}>План</button>
+        <button onClick={() => setTab('ai')}>Спросить Lumora AI</button>
+      </div>
+    </Section>
+  );
+}
+
+function RestaurantDashboardUXChecklist({ summary }) {
+  const hasRevenue = metricRaw(summary, 'revenue') > 0;
+  const hasHourly = Boolean(summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.length);
+  const hasDishes = Boolean(summary?.topDishes?.length || summary?.categories?.length);
+  const hasDiscounts = Boolean(summary?.discountAnalytics?.percentText || metric(summary, 'discounts'));
+  const items = [
+    { label: 'Основные KPI', ok: hasRevenue, text: hasRevenue ? 'выручка и план-факт видны' : 'ожидаем продажи за период' },
+    { label: 'Почасовка', ok: hasHourly, text: hasHourly ? 'пики продаж доступны' : 'пиков пока нет' },
+    { label: 'Меню', ok: hasDishes, text: hasDishes ? 'блюда и категории есть' : 'меню появится после данных' },
+    { label: 'Скидки', ok: hasDiscounts, text: hasDiscounts ? 'скидки считаются по проценту' : 'скидки без сигнала' }
+  ];
+  return (
+    <Section title="Готовность дашборда" subtitle="быстрая проверка, что видит ресторатор">
+      <div className="event-list">
+        {items.map((item) => (
+          <div className={`event-row ${item.ok ? 'good' : 'warn'}`} key={item.label}>
+            <span>{item.ok ? '✓' : '!'}</span>
+            <div><b>{item.label}</b><p>{item.text}</p></div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function DesignPrepBlock() {
+  return (
+    <Section title="Подготовка к дизайну" subtitle="что будем менять после финальных продуктовых проверок">
+      <div className="mini-grid">
+        <div className="mini-card"><small>Панель КЛИК</small><b>отдельный стиль</b><p>больше похоже на банковский кабинет владельца платформы</p></div>
+        <div className="mini-card"><small>Мой бизнес</small><b>проще</b><p>для ресторатора без служебной технички</p></div>
+        <div className="mini-card"><small>Дашборд</small><b>дороже</b><p>карточки, отступы, акценты и мобильный вид</p></div>
+      </div>
+      <p className="soft-text">Фото-референсы лучше прислать перед дизайн-паком. Сейчас мы оставляем рабочую статистику и доступы стабильными, а готовим интерфейс к быстрой перекраске.</p>
+    </Section>
+  );
+}
+
 function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
@@ -728,6 +813,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       </div>
 
       <PeriodSwitch period={period} setPeriod={setPeriod} />
+
+      <RestaurantDashboardPolishBlock summary={summary} settings={settings} setTab={setTab} period={period} />
 
       <div className="stat-grid">
         {visible.map((item) => <StatCard key={item?.key} item={item} trend={summary?.week} />)}
@@ -769,6 +856,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
           </div>
         ) : <EmptyState title="Событий пока нет" text="После первых чеков Lumora покажет пики, просадки и важные сигналы." />}
       </Section>
+
+      <RestaurantDashboardUXChecklist summary={summary} />
 
       <Section title="Lumora-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
         <div className="ai-note">
@@ -3192,6 +3281,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         })}
       </Section>
       <DataReadinessBlock summary={summary} />
+      <DesignPrepBlock />
       <button className="primary-btn" onClick={reload}>Обновить данные из API</button>
     </div>
   );
