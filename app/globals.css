@@ -1592,3 +1592,244 @@ label { min-width: 0; }
     font-size: 28px !important;
   }
 }
+
+/* === Design Super Pack 4: final light contrast guard ===
+   Fixes pale text after the owner-console polish: no white-on-white, readable platform tabs,
+   readable mini cards and clean forms. Data/API logic is untouched. */
+:root[data-theme="light"] .console-home-wrap {
+  background: #ffffff !important;
+  color: #0b2348 !important;
+}
+
+:root[data-theme="light"] .console-home-wrap .panel,
+:root[data-theme="light"] .console-home-wrap .platform-console-clean,
+:root[data-theme="light"] .content .platform-console-clean {
+  background: #ffffff !important;
+  color: #0b2348 !important;
+  border-color: rgba(17, 91, 190, .12) !important;
+  box-shadow: 0 16px 44px rgba(15, 72, 150, .08) !important;
+}
+
+:root[data-theme="light"] .console-home-wrap :is(h1,h2,h3,b,strong),
+:root[data-theme="light"] .platform-console-clean :is(h1,h2,h3,b,strong),
+:root[data-theme="light"] .platform-console-panel :is(h1,h2,h3,b,strong) {
+  color: #08275a !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .console-home-wrap :is(p,span,small,label),
+:root[data-theme="light"] .platform-console-clean :is(p,span,small,label),
+:root[data-theme="light"] .platform-console-panel :is(p,span,small,label) {
+  color: #385071 !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .console-home-wrap .console-hero-panel,
+:root[data-theme="light"] .console-hero-panel {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(104, 188, 255, .32), transparent 42%),
+    linear-gradient(145deg, #06307b 0%, #0959c8 62%, #1f8dff 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(87, 173, 255, .30) !important;
+}
+
+:root[data-theme="light"] .console-hero-panel :is(h1,h2,h3,b,strong),
+:root[data-theme="light"] .console-hero-panel :is(p,span,small,label) {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .console-hero-panel .mini-card {
+  background: rgba(255,255,255,.15) !important;
+  border-color: rgba(230,245,255,.24) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .mini-card,
+:root[data-theme="light"] .platform-console-panel .mini-card,
+:root[data-theme="light"] .platform-console-clean .business-card,
+:root[data-theme="light"] .platform-console-clean .event-row,
+:root[data-theme="light"] .platform-console-clean .control-row {
+  background: #f6faff !important;
+  color: #0b2348 !important;
+  border: 1px solid rgba(17, 91, 190, .13) !important;
+  box-shadow: 0 10px 24px rgba(15, 72, 150, .045) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .mini-card :is(small,p,span),
+:root[data-theme="light"] .platform-console-panel .mini-card :is(small,p,span),
+:root[data-theme="light"] .platform-console-clean .business-card :is(small,p,span),
+:root[data-theme="light"] .platform-console-clean .event-row :is(small,p,span),
+:root[data-theme="light"] .platform-console-clean .control-row :is(small,p,span) {
+  color: #385071 !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .mini-card b,
+:root[data-theme="light"] .platform-console-panel .mini-card b,
+:root[data-theme="light"] .platform-console-clean .business-card b,
+:root[data-theme="light"] .platform-console-clean .event-row b,
+:root[data-theme="light"] .platform-console-clean .control-row b {
+  color: #08275a !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean input:not([type="checkbox"]),
+:root[data-theme="light"] .platform-console-clean textarea,
+:root[data-theme="light"] .platform-console-clean select,
+:root[data-theme="light"] .platform-console-panel input:not([type="checkbox"]),
+:root[data-theme="light"] .platform-console-panel textarea,
+:root[data-theme="light"] .platform-console-panel select {
+  width: 100% !important;
+  min-height: 50px !important;
+  background: #ffffff !important;
+  color: #09295b !important;
+  border: 1px solid rgba(17, 91, 190, .20) !important;
+  border-radius: 17px !important;
+  padding: 12px 14px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.70), 0 8px 20px rgba(15,72,150,.055) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean input::placeholder,
+:root[data-theme="light"] .platform-console-clean textarea::placeholder,
+:root[data-theme="light"] .platform-console-panel input::placeholder,
+:root[data-theme="light"] .platform-console-panel textarea::placeholder {
+  color: #74839a !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean select option,
+:root[data-theme="light"] .platform-console-panel select option {
+  background: #ffffff !important;
+  color: #09295b !important;
+}
+
+:root[data-theme="light"] .platform-console-clean label,
+:root[data-theme="light"] .platform-console-panel label {
+  display: grid !important;
+  gap: 8px !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  color: #193b70 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean label > span,
+:root[data-theme="light"] .platform-console-panel label > span {
+  color: #193b70 !important;
+  font-size: 13px !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .period-switch.platform-nav,
+:root[data-theme="light"] .platform-console-panel .period-switch.platform-nav,
+:root[data-theme="light"] .platform-nav {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  padding: 9px !important;
+  background: #eef5ff !important;
+  border: 1px solid rgba(17, 91, 190, .14) !important;
+  border-radius: 22px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.72) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .period-switch.platform-nav button,
+:root[data-theme="light"] .platform-console-panel .period-switch.platform-nav button,
+:root[data-theme="light"] .platform-nav button {
+  min-height: 48px !important;
+  padding: 10px 8px !important;
+  border-radius: 16px !important;
+  background: transparent !important;
+  color: #173a70 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+  border: 1px solid transparent !important;
+}
+
+:root[data-theme="light"] .platform-console-clean .period-switch.platform-nav button.active,
+:root[data-theme="light"] .platform-console-panel .period-switch.platform-nav button.active,
+:root[data-theme="light"] .platform-nav button.active {
+  background: linear-gradient(135deg, #1d73df 0%, #73bdff 100%) !important;
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.50) !important;
+  box-shadow: 0 10px 20px rgba(29, 115, 223, .20) !important;
+}
+
+:root[data-theme="light"] .platform-console-clean button:not(.active),
+:root[data-theme="light"] .platform-console-panel button:not(.active) {
+  color: #143b72;
+  opacity: 1;
+}
+
+:root[data-theme="light"] .platform-console-clean .primary-btn,
+:root[data-theme="light"] .platform-console-panel .primary-btn {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0d6fe7 0%, #5ab1ff 100%) !important;
+  border-color: rgba(255,255,255,.32) !important;
+}
+
+:root[data-theme="light"] .section-action button,
+:root[data-theme="light"] .text-btn {
+  color: #0b4fa8 !important;
+  background: #eef6ff !important;
+  border-color: rgba(17, 91, 190, .16) !important;
+}
+
+:root[data-theme="light"] .event-row > span:first-child,
+:root[data-theme="light"] .insight-row > span:first-child,
+:root[data-theme="light"] .plan-row > span:first-child {
+  color: #0b4fa8 !important;
+  background: #e6f2ff !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .filter-row select,
+:root[data-theme="light"] .filter-row input[type="date"] {
+  color: #08275a !important;
+  background: #ffffff !important;
+  border-color: rgba(17, 91, 190, .18) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .data-note,
+:root[data-theme="light"] .topbar .data-note {
+  color: #566a86 !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .top-tabs button {
+  color: #183b70 !important;
+  background: #ffffff !important;
+  border-color: rgba(17, 91, 190, .15) !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme="light"] .top-tabs button.active {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0d6fe7, #70baff) !important;
+}
+
+@media (max-width: 430px) {
+  :root[data-theme="light"] .platform-console-clean .mini-card,
+  :root[data-theme="light"] .platform-console-panel .mini-card {
+    min-height: 92px !important;
+    padding: 14px !important;
+  }
+
+  :root[data-theme="light"] .platform-console-clean .mini-card b,
+  :root[data-theme="light"] .platform-console-panel .mini-card b {
+    font-size: 29px !important;
+  }
+
+  :root[data-theme="light"] .platform-console-clean .period-switch.platform-nav button,
+  :root[data-theme="light"] .platform-console-panel .period-switch.platform-nav button {
+    font-size: 12px !important;
+    min-height: 46px !important;
+  }
+}
