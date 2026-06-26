@@ -3163,40 +3163,43 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
         <div className="control-row"><div><b>Автообновление</b><p>Обновлять каждые 30 секунд</p></div><input type="checkbox" checked={settings.autoRefresh} onChange={(e) => update('autoRefresh', e.target.checked)} /></div>
       </Section>
 
-      <Section title="Состояние продукта" subtitle="что уже готово в рабочей версии">
-        <div className="event-row good">
-          <span>✓</span>
-          <div>
-            <b>Основная аналитика не тронута</b>
-            <p>Выручка, чеки, гости, средний чек, точки, каналы, скидки, фудкост, блюда, категории и почасовка остаются на реальных данных из iiko/Supabase.</p>
-          </div>
-        </div>
-        <div className="mini-grid">
-          <div className="mini-card"><small>Доступы</small><b>готовы</b><p>роли и кабинеты разделены</p></div>
-          <div className="mini-card"><small>Без доступа</small><b>закрыто</b><p>Telegram без роли не видит дашборд</p></div>
-          <div className="mini-card"><small>Данные</small><b>не трогали</b><p>iiko/n8n/Supabase без изменений</p></div>
-        </div>
-      </Section>
+      {(isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo)) ? (
+        <>
+          <Section title="Состояние продукта" subtitle="внутренний контроль владельца платформы">
+            <div className="event-row good">
+              <span>✓</span>
+              <div>
+                <b>Рабочая аналитика не тронута</b>
+                <p>Выручка, чеки, гости, средний чек, точки, каналы, скидки, фудкост, блюда, категории и почасовка остаются на реальных данных из iiko/Supabase.</p>
+              </div>
+            </div>
+            <div className="mini-grid">
+              <div className="mini-card"><small>Доступы</small><b>готовы</b><p>роли и кабинеты разделены</p></div>
+              <div className="mini-card"><small>Без доступа</small><b>закрыто</b><p>Telegram без роли не видит дашборд</p></div>
+              <div className="mini-card"><small>Данные</small><b>не трогали</b><p>iiko/n8n/Supabase без изменений</p></div>
+            </div>
+          </Section>
 
+          <Section title="Защита данных API" subtitle="внутренняя проверка КЛИК">
+            <div className="event-row good">
+              <span>⛨</span>
+              <div>
+                <b>Статистика и AI закрыты для Telegram без доступа</b>
+                <p>Пользователь без роли не получает ресторанные данные. Этот блок видит только владелец платформы или dev-режим.</p>
+              </div>
+            </div>
+            <div className="mini-grid">
+              <div className="mini-card"><small>Mini App</small><b>защищён</b><p>проверка по Telegram</p></div>
+              <div className="mini-card"><small>Рестораны</small><b>по доступу</b><p>чужая точка не отдаётся</p></div>
+              <div className="mini-card"><small>AI</small><b>по роли</b><p>Lumora AI проверяет права</p></div>
+            </div>
+          </Section>
 
+          <AccessModeBlock authInfo={authInfo} />
+          <SoftAccessPolicyBlock authInfo={authInfo} />
+        </>
+      ) : null}
 
-      <Section title="Защита данных API" subtitle="Stage 17: статистика и AI проверяют Telegram-доступ">
-        <div className="event-row good">
-          <span>⛨</span>
-          <div>
-            <b>/api/summary и /api/ai-chat закрыты для Telegram без доступа</b>
-            <p>Обычный пользователь в Mini App не сможет получить статистику или AI-ответы по ресторану. Браузерный dev-режим пока открыт, чтобы не запереть рабочий MVP.</p>
-          </div>
-        </div>
-        <div className="mini-grid">
-          <div className="mini-card"><small>Mini App</small><b>защищён</b><p>проверка по Telegram initData</p></div>
-          <div className="mini-card"><small>Рестораны</small><b>по доступу</b><p>чужой restaurant_id не отдаётся</p></div>
-          <div className="mini-card"><small>AI</small><b>по роли</b><p>раздел Lumora AI проверяет права</p></div>
-        </div>
-      </Section>
-
-      <AccessModeBlock authInfo={authInfo} />
-      <SoftAccessPolicyBlock authInfo={authInfo} />
       {isPlatformOwnerUser(authInfo) || !isTelegramAccessMode(authInfo) ? <PlatformAdminBlock authInfo={authInfo} /> : null}
       {getBusinessCabinetBusinesses(authInfo).length ? <ClientBusinessCabinetBlock authInfo={authInfo} /> : null}
       {!isTelegramAccessMode(authInfo) ? <AccessAdminBlock summary={summary} authInfo={authInfo} /> : null}
@@ -3423,13 +3426,13 @@ export default function Page() {
           <>
             <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
             <TopTabs tab={tab} setTab={setTab} authInfo={authInfo} />
-            {(isPlatformOwnerUser(authInfo) || getBusinessCabinetBusinesses(authInfo).length) ? (
-              <div style={{ margin: '0 18px 12px', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 18, background: 'var(--panel-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            {isPlatformOwnerUser(authInfo) ? (
+              <div className="owner-return-strip">
                 <div>
-                  <small>{isPlatformOwnerUser(authInfo) ? 'Ты внутри выбранного ресторана клиента' : 'Кабинет клиента'}</small>
+                  <small>Ты внутри выбранного ресторана клиента</small>
                   <b>Открыт дашборд: {viewingRestaurantName}</b>
                 </div>
-                {isPlatformOwnerUser(authInfo) ? <button onClick={() => setTab('platform')}>Назад в панель КЛИК</button> : <button onClick={() => setTab('client')}>Мой бизнес</button>}
+                <button onClick={() => setTab('platform')}>Назад в панель КЛИК</button>
               </div>
             ) : null}
             <div className="content">{screen}</div>
