@@ -692,3 +692,209 @@ body[data-theme="light"] {
   .stat-card strong { font-size: 22px; }
   .checkbox-grid { grid-template-columns: 1fr; }
 }
+
+/* ================================
+   DESIGN PACK 1.1 вЂ” Readability Fix
+   Р§РёРЅРёРј РїРѕР»СЏ РІРІРѕРґР°, РІРєР»Р°РґРєРё Рё РєРѕРЅС‚СЂР°СЃС‚ РІ СЃРІРµС‚Р»РѕР№ СЃРёРЅРµР№ С‚РµРјРµ.
+   РўРµРјРЅСѓСЋ С‚РµРјСѓ РїРѕС‡С‚Рё РЅРµ С‚СЂРѕРіР°РµРј.
+================================ */
+
+/* Р’РєР»Р°РґРєРё РІРЅСѓС‚СЂРё СЃРёРЅРёС… РєР°СЂС‚РѕС‡РµРє: РЅРµ С‡РµСЂРЅС‹Р№ С‚РµРєСЃС‚ РЅР° СЃРёРЅРµРј С„РѕРЅРµ */
+:root[data-theme="light"] .period-switch {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  padding: 8px;
+  background: rgba(3, 18, 45, 0.22) !important;
+  border-color: rgba(179, 214, 255, 0.18) !important;
+  border-radius: 22px;
+}
+:root[data-theme="light"] .period-switch button {
+  min-height: 44px;
+  padding: 10px 8px;
+  color: rgba(224, 240, 255, 0.82) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+:root[data-theme="light"] .period-switch button.active {
+  color: #ffffff !important;
+  background: linear-gradient(145deg, rgba(116, 181, 255, 0.34), rgba(55, 139, 255, 0.28)) !important;
+  border-color: rgba(180, 220, 255, 0.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 20px rgba(2, 20, 55, 0.14) !important;
+}
+
+/* Р¤РѕСЂРјС‹: РєР°Р¶РґС‹Р№ label РѕС‚РґРµР»СЊРЅС‹Рј Р±Р»РѕРєРѕРј, input РЅРµ РІСЂРµР·Р°РµС‚СЃСЏ РІ С‚РµРєСЃС‚ */
+.panel label,
+.modal label,
+.control-screen label,
+.chat-box label {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.panel label > span,
+.modal label > span,
+.control-screen label > span,
+.chat-box label > span {
+  display: block;
+  color: rgba(232, 243, 255, 0.88);
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* РџРѕР»СЏ РІРІРѕРґР° РЅР° СЃРёРЅРµРј РІРёРґР¶РµС‚Рµ: С‡РёС‚Р°РµРјС‹Рµ, СЃ РЅРѕСЂРјР°Р»СЊРЅРѕР№ РІС‹СЃРѕС‚РѕР№ */
+:root[data-theme="light"] .panel input:not([type="checkbox"]),
+:root[data-theme="light"] .panel select,
+:root[data-theme="light"] .panel textarea,
+:root[data-theme="light"] .modal input:not([type="checkbox"]),
+:root[data-theme="light"] .modal select,
+:root[data-theme="light"] .modal textarea,
+:root[data-theme="light"] .control-screen input:not([type="checkbox"]),
+:root[data-theme="light"] .control-screen select,
+:root[data-theme="light"] .control-screen textarea,
+:root[data-theme="light"] .filter-row input,
+:root[data-theme="light"] .filter-row select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 14px;
+  color: #0a1730 !important;
+  background: #f7fbff !important;
+  border: 1px solid rgba(137, 190, 255, 0.42) !important;
+  border-radius: 16px !important;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 8px 18px rgba(2, 23, 60, 0.08);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-theme="light"] .panel textarea,
+:root[data-theme="light"] .modal textarea,
+:root[data-theme="light"] .control-screen textarea {
+  min-height: 92px;
+  resize: vertical;
+  white-space: normal;
+  overflow: auto;
+}
+:root[data-theme="light"] .panel input:focus,
+:root[data-theme="light"] .panel select:focus,
+:root[data-theme="light"] .panel textarea:focus,
+:root[data-theme="light"] .modal input:focus,
+:root[data-theme="light"] .modal select:focus,
+:root[data-theme="light"] .modal textarea:focus,
+:root[data-theme="light"] .control-screen input:focus,
+:root[data-theme="light"] .control-screen select:focus,
+:root[data-theme="light"] .control-screen textarea:focus {
+  border-color: rgba(169, 213, 255, 0.86) !important;
+  box-shadow: 0 0 0 4px rgba(89, 159, 255, 0.18), inset 0 1px 0 rgba(255,255,255,0.88);
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder {
+  color: #7d8798 !important;
+  opacity: 1;
+}
+:root[data-theme="light"] select option {
+  color: #0a1730;
+  background: #ffffff;
+}
+
+/* РЎС‚СЂРѕРєРё СЃ select СЃРїСЂР°РІР°: СЂРѕРІРЅР°СЏ СЃРµС‚РєР° Рё РїРµСЂРµРЅРѕСЃ РЅР° РјР°Р»РµРЅСЊРєРѕРј СЌРєСЂР°РЅРµ */
+.control-row {
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 174px);
+  align-items: center;
+}
+:root[data-theme="light"] .control-row {
+  color: #ffffff;
+}
+:root[data-theme="light"] .control-row b {
+  color: #ffffff;
+}
+:root[data-theme="light"] .control-row p {
+  color: rgba(232, 243, 255, 0.72) !important;
+}
+:root[data-theme="light"] .control-row select,
+:root[data-theme="light"] .control-row input:not([type="checkbox"]) {
+  min-height: 44px;
+  align-self: center;
+}
+
+/* РњР°Р»С‹Рµ РєРЅРѕРїРєРё РІ СЃРёРЅРµРј РєР°Р±РёРЅРµС‚Рµ: РЅРµ С‡РµСЂРЅС‹Рµ РЅР° С‚РµРјРЅРѕ-СЃРёРЅРµРј */
+:root[data-theme="light"] .panel button:not(.primary-btn):not(.active),
+:root[data-theme="light"] .business-card button:not(.primary-btn),
+:root[data-theme="light"] .event-row button:not(.primary-btn),
+:root[data-theme="light"] .mini-card button:not(.primary-btn) {
+  color: rgba(234, 246, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(190, 222, 255, 0.18);
+  border-radius: 14px;
+  padding: 9px 11px;
+  font-weight: 700;
+}
+:root[data-theme="light"] .panel button:not(.primary-btn):not(.active):hover,
+:root[data-theme="light"] .business-card button:not(.primary-btn):hover,
+:root[data-theme="light"] .event-row button:not(.primary-btn):hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(190, 222, 255, 0.28);
+}
+
+/* РћСЃРЅРѕРІРЅС‹Рµ РєРЅРѕРїРєРё РѕСЃС‚Р°РІР»СЏРµРј СЃРІРµС‚Р»Рѕ-РіРѕР»СѓР±С‹РјРё, РЅРѕ РґРµР»Р°РµРј С‚РµРєСЃС‚ СѓРІРµСЂРµРЅРЅС‹Рј */
+:root[data-theme="light"] .primary-btn,
+:root[data-theme="light"] .chat-input button {
+  color: #061a3a !important;
+  background: linear-gradient(135deg, #d8ecff, #61a8ff 52%, #2e86ff) !important;
+  border: 0 !important;
+  min-height: 52px;
+  border-radius: 18px;
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: 0 12px 24px rgba(33, 128, 255, 0.22);
+}
+
+/* Р§СѓС‚СЊ СЃРїРѕРєРѕР№РЅРµРµ РєР°СЂС‚РѕС‡РєРё Рё С‚РµРєСЃС‚С‹, С‡С‚РѕР±С‹ РіР»Р°Р·Р° РЅРµ СЂР°Р·Р±РµРіР°Р»РёСЃСЊ */
+:root[data-theme="light"] .panel h3,
+:root[data-theme="light"] .panel h2,
+:root[data-theme="light"] .panel b,
+:root[data-theme="light"] .business-card b,
+:root[data-theme="light"] .mini-card b {
+  text-wrap: balance;
+}
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .business-card,
+:root[data-theme="light"] .mini-card,
+:root[data-theme="light"] .event-row,
+:root[data-theme="light"] .control-row {
+  overflow: hidden;
+}
+:root[data-theme="light"] .business-card p,
+:root[data-theme="light"] .mini-card p,
+:root[data-theme="light"] .event-row p,
+:root[data-theme="light"] .control-row p {
+  overflow-wrap: anywhere;
+}
+
+/* Р’РЅСѓС‚СЂРё Р°РґРјРёРЅРєРё РЅР° СѓР·РєРѕРј СЌРєСЂР°РЅРµ С„РѕСЂРјС‹ РёРґСѓС‚ РІ РѕРґРЅСѓ РєРѕР»РѕРЅРєСѓ */
+@media (max-width: 430px) {
+  .control-row {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  :root[data-theme="light"] .control-row select,
+  :root[data-theme="light"] .control-row input:not([type="checkbox"]) {
+    width: 100%;
+  }
+  :root[data-theme="light"] .period-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  :root[data-theme="light"] .panel input:not([type="checkbox"]),
+  :root[data-theme="light"] .panel select,
+  :root[data-theme="light"] .panel textarea {
+    font-size: 16px;
+  }
+}
