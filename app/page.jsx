@@ -2090,6 +2090,8 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
   const [newBusinessName, setNewBusinessName] = useState('');
   const [newBusinessCity, setNewBusinessCity] = useState('Тюмень');
   const [newOwnerUsername, setNewOwnerUsername] = useState('');
+  const [newBusinessRestaurantName, setNewBusinessRestaurantName] = useState('');
+  const [newBusinessRestaurantId, setNewBusinessRestaurantId] = useState('');
   const [newPlanName, setNewPlanName] = useState('pilot');
   const [newSubscriptionStatus, setNewSubscriptionStatus] = useState('trial');
   const [newBusinessStatus, setNewBusinessStatus] = useState('active');
@@ -2295,24 +2297,42 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
 
   async function addBusiness() {
     const name = newBusinessName.trim();
+    const ownerUsername = normalizeInputUsername(newOwnerUsername);
+    const restaurantName = newBusinessRestaurantName.trim() || name;
+
     if (!name) {
       setMessage('Введи название бизнеса клиента.');
       return;
     }
+    if (!ownerUsername) {
+      setMessage('Введи Telegram владельца бизнеса.');
+      return;
+    }
+    if (!restaurantName) {
+      setMessage('Введи первый ресторан клиента.');
+      return;
+    }
+
     const result = await callPlatform({
-      action: 'upsert_business',
+      action: 'onboard_client',
       name,
       city: newBusinessCity.trim() || 'Тюмень',
-      owner_username: normalizeInputUsername(newOwnerUsername),
+      owner_username: ownerUsername,
+      first_restaurant_name: restaurantName,
+      first_restaurant_id: newBusinessRestaurantId.trim(),
       plan_name: newPlanName.trim() || 'pilot',
       status: newBusinessStatus,
       subscription_status: newSubscriptionStatus,
       notes: newBusinessNotes.trim(),
-      restaurant_ids: selectedRestaurantIds
-    }, 'Бизнес добавлен или обновлён.');
+      initial_payment_amount: 0,
+      payment_status: 'pending'
+    }, 'Клиент создан: бизнес, первый ресторан и владелец подготовлены.');
+
     if (result?.business?.id) {
       setNewBusinessName('');
       setNewOwnerUsername('');
+      setNewBusinessRestaurantName('');
+      setNewBusinessRestaurantId('');
       setNewBusinessNotes('');
       setSelectedRestaurantIds([]);
       setSelectedBusinessId(result.business.id);
@@ -2881,14 +2901,13 @@ function PlatformAdminBlock({ authInfo, openRestaurantDashboard }) {
         <label><span>Название бизнеса</span><input value={newBusinessName} onChange={(e) => setNewBusinessName(e.target.value)} placeholder="Например: Новый ресторан / сеть" /></label>
         <label><span>Город</span><input value={newBusinessCity} onChange={(e) => setNewBusinessCity(e.target.value)} placeholder="Тюмень" /></label>
         <label><span>Владелец Telegram</span><input value={newOwnerUsername} onChange={(e) => setNewOwnerUsername(e.target.value)} placeholder="@client_owner" /></label>
+        <label><span>Первый ресторан</span><input value={newBusinessRestaurantName} onChange={(e) => setNewBusinessRestaurantName(e.target.value)} placeholder="Например: Основной зал / Бар на Ленина" /></label>
+        <label><span>ID ресторана</span><input value={newBusinessRestaurantId} onChange={(e) => setNewBusinessRestaurantId(e.target.value)} placeholder="можно оставить пустым, создадим автоматически" /></label>
         <div className="control-row"><div><b>Тариф</b><p>для внутреннего контроля оплаты</p></div><select value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)}><option value="pilot">pilot</option><option value="basic">basic</option><option value="standard">standard</option><option value="network">network</option></select></div>
         <div className="control-row"><div><b>Подписка</b><p>trial, оплачено или просрочено</p></div><select value={newSubscriptionStatus} onChange={(e) => setNewSubscriptionStatus(e.target.value)}><option value="trial">trial</option><option value="active">оплачено</option><option value="overdue">просрочено</option><option value="cancelled">отключено</option></select></div>
         <div className="control-row"><div><b>Статус бизнеса</b><p>можно поставить на паузу</p></div><select value={newBusinessStatus} onChange={(e) => setNewBusinessStatus(e.target.value)}><option value="active">активен</option><option value="paused">пауза</option><option value="archived">архив</option></select></div>
-        {restaurants.length ? <div style={{ margin: '10px 0' }}><span style={{ color: 'var(--muted)', fontSize: 13 }}>Привязать существующие рестораны</span>{restaurants.map((restaurant) => (
-          <div className="control-row" key={`pick-${restaurant.id}`}><div><b>{restaurant.name || restaurant.id}</b><p>{restaurant.city || 'Город'} · доступ к точке</p></div><input type="checkbox" checked={selectedRestaurantIds.includes(restaurant.id)} onChange={() => toggleRestaurant(restaurant.id)} /></div>
-        ))}</div> : null}
         <label><span>Заметка</span><textarea value={newBusinessNotes} onChange={(e) => setNewBusinessNotes(e.target.value)} placeholder="Например: оплатил пилот, iiko подключить позже" rows={3} /></label>
-        <button className="primary-btn" onClick={addBusiness} disabled={loading || !hasPlatformGate}>Добавить бизнес</button>
+        <button className="primary-btn" onClick={addBusiness} disabled={loading || !hasPlatformGate}>Создать бизнес, ресторан и владельца</button>
       </div>
     </Section>
   );
