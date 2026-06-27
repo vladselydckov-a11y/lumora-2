@@ -3,28 +3,38 @@ import { isFreshAuthDate, parseInitData, validateTelegramInitData } from '../../
 import { assertAdminKey, cleanRole, normalizeUsername } from '../../../../lib/accessServer';
 import { supabaseFetch } from '../../../../lib/supabaseServer';
 
-function safeBusinessId(value, name = '') {
-  const source = String(value || name || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, '')
-    .replace(/[^a-z0-9а-яё_-]+/gi, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 48);
+const CYRILLIC_MAP = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
+  х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya'
+};
 
-  return source || `biz_${Date.now()}`;
+function slugify(value, prefix) {
+  const raw = String(value || '').trim().toLowerCase().replace(/^@+/, '');
+  const translit = raw
+    .split('')
+    .map((char) => CYRILLIC_MAP[char] ?? char)
+    .join('')
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_')
+    .slice(0, 52);
+  return translit ? `${prefix}_${translit}`.slice(0, 64) : `${prefix}_${Date.now()}`;
+}
+
+function safeBusinessId(value, name = '') {
+  const source = String(value || '').trim();
+  if (source) {
+    const normalized = slugify(source, 'biz');
+    return normalized.startsWith('biz_') ? normalized : `biz_${normalized}`;
+  }
+  return slugify(name, 'biz');
 }
 
 function safeRestaurantId(value, name = '') {
-  const source = String(value || name || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, '')
-    .replace(/[^a-z0-9а-яё_-]+/gi, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 48);
-
-  return source || `restaurant_${Date.now()}`;
+  const source = String(value || '').trim();
+  if (source) return slugify(source, 'restaurant');
+  return slugify(name, 'restaurant');
 }
 
 function cleanText(value, fallback = '') {
@@ -135,6 +145,100 @@ function businessPayloadFromBody(body, id) {
 async function fetchOptional(path) {
   const rows = await supabaseFetch(path).catch(() => []);
   return Array.isArray(rows) ? rows : [];
+}
+
+
+function defaultSectionsForBusinessRole(role = 'business_owner') {
+  if (role === 'business_owner' || role === 'business_admin') return ['today', 'reports', 'waiters', 'ai', 'analytics', 'plan', 'risks', 'control'];
+  if (role === 'accountant') return ['today', 'reports', 'analytics', 'risks'];
+  return ['today', 'reports'];
+}
+
+function normalizePermissions(role = 'business_owner', permissions = null) {
+  const source = permissions && typeof permissions === 'object' ? permissions : {};
+  const sections = unique(Array.isArray(source.sections) ? source.sections : defaultSectionsForBusinessRole(role));
+  return {
+    sections: sections.length ? sections : defaultSectionsForBusinessRole(role),
+    can_manage_employees: source.can_manage_employees === undefined
+      ? ['business_owner', 'business_admin'].includes(role)
+      : Boolean(source.can_manage_employees)
+  };
+}
+
+async function findKnownTelegramId(username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+
+  const [appUsers, activeAccess, businessUsers] = await Promise.all([
+    fetchOptional(`/rest/v1/app_users?select=telegram_id,username,username_normalized&username_normalized=eq.${encode(normalized)}&limit=1`),
+    fetchOptional(`/rest/v1/app_user_restaurant_access?select=telegram_id,username,username_normalized&username_normalized=eq.${encode(normalized)}&telegram_id=not.is.null&limit=1`),
+    fetchOptional(`/rest/v1/platform_business_users?select=telegram_id,username,username_normalized&username_normalized=eq.${encode(normalized)}&telegram_id=not.is.null&limit=1`)
+  ]);
+
+  return appUsers[0]?.telegram_id || activeAccess[0]?.telegram_id || businessUsers[0]?.telegram_id || null;
+}
+
+async function upsertRestaurantAccess({ telegramId = null, username, restaurantId, role = 'owner', createdByTelegramId = null }) {
+  const normalized = normalizeUsername(username);
+  if (!normalized || !restaurantId) return null;
+
+  if (!telegramId) {
+    return addPendingInvite({ username: normalized, restaurantId, role, createdByTelegramId });
+  }
+
+  const payload = {
+    telegram_id: String(telegramId),
+    username: normalized,
+    username_normalized: normalized,
+    restaurant_id: restaurantId,
+    role: cleanRole(role),
+    status: 'active',
+    created_by_telegram_id: createdByTelegramId,
+    removed_at: null,
+    updated_at: new Date().toISOString()
+  };
+
+  const existing = await supabaseFetch(`/rest/v1/app_user_restaurant_access?select=*&username_normalized=eq.${encode(normalized)}&restaurant_id=eq.${encode(restaurantId)}&limit=1`).catch(() => []);
+
+  if (Array.isArray(existing) && existing[0]) {
+    const updated = await supabaseFetch(`/rest/v1/app_user_restaurant_access?id=eq.${existing[0].id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }).catch(() => null);
+    return Array.isArray(updated) ? updated[0] : { ...existing[0], ...payload };
+  }
+
+  const inserted = await supabaseFetch('/rest/v1/app_user_restaurant_access', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }).catch(() => null);
+
+  return Array.isArray(inserted) ? inserted[0] : payload;
+}
+
+async function upsertStarterIntegration({ businessId, restaurantId }) {
+  if (!businessId || !restaurantId) return null;
+  const existing = await fetchOptional(`/rest/v1/platform_restaurant_integrations?select=*&restaurant_id=eq.${encode(restaurantId)}&limit=1`);
+  const payload = {
+    business_id: businessId,
+    restaurant_id: restaurantId,
+    iiko_status: 'not_connected',
+    n8n_status: 'not_connected',
+    data_status: 'not_connected',
+    last_sync_at: null,
+    sync_interval_minutes: 5,
+    workflow_url: null,
+    iiko_base_url: null,
+    connection_notes: 'Клиент создан в платформе. iiko/n8n подключить отдельно.',
+    is_enabled: true,
+    updated_at: new Date().toISOString()
+  };
+  if (existing[0]) {
+    const updated = await supabaseFetch(`/rest/v1/platform_restaurant_integrations?id=eq.${existing[0].id}`, { method: 'PATCH', body: JSON.stringify(payload) }).catch(() => null);
+    return Array.isArray(updated) ? updated[0] : { ...existing[0], ...payload };
+  }
+  const inserted = await supabaseFetch('/rest/v1/platform_restaurant_integrations', { method: 'POST', body: JSON.stringify(payload) }).catch(() => null);
+  return Array.isArray(inserted) ? inserted[0] : payload;
 }
 
 async function replaceBusinessRestaurants(businessId, restaurantIds = []) {
@@ -309,14 +413,22 @@ async function upsertRestaurant(body = {}) {
 }
 
 async function createBusinessWithRestaurants(body = {}) {
+  const firstRestaurantName = cleanText(body.first_restaurant_name || body.firstRestaurantName || body.restaurant_name || body.restaurantName || body.name);
   const restaurantInputs = Array.isArray(body.restaurants_to_create)
     ? body.restaurants_to_create
     : Array.isArray(body.restaurantsToCreate)
       ? body.restaurantsToCreate
-      : [];
+      : firstRestaurantName
+        ? [{
+            id: body.first_restaurant_id || body.firstRestaurantId || body.restaurant_id || body.restaurantId || '',
+            name: firstRestaurantName,
+            city: body.city || 'Тюмень',
+            is_active: true
+          }]
+        : [];
 
   const createdRestaurants = [];
-  for (const restaurantInput of restaurantInputs) {
+  for (const restaurantInput of restaurantInputs.slice(0, 1)) {
     const restaurantName = cleanText(restaurantInput?.name || restaurantInput?.restaurant_name || restaurantInput?.restaurantName);
     if (!restaurantName) continue;
     const restaurant = await upsertRestaurant({
@@ -336,16 +448,24 @@ async function createBusinessWithRestaurants(body = {}) {
     restaurant_ids: restaurantIds
   });
 
+  const createdIntegrations = [];
+  for (const restaurantId of restaurantIds) {
+    const integration = await upsertStarterIntegration({ businessId: business.id, restaurantId });
+    if (integration) createdIntegrations.push(integration);
+  }
+
   let ownerResult = null;
   const ownerUsername = normalizeUsername(body.owner_username || body.ownerUsername);
   if (ownerUsername) {
+    const knownTelegramId = body.owner_telegram_id || body.ownerTelegramId || await findKnownTelegramId(ownerUsername);
     ownerResult = await addBusinessUser({
       business_id: business.id,
       username: ownerUsername,
       business_role: 'business_owner',
       restaurant_role: 'owner',
       restaurant_ids: restaurantIds,
-      telegram_id: body.owner_telegram_id || body.ownerTelegramId || null
+      telegram_id: knownTelegramId || null,
+      created_by_telegram_id: body.created_by_telegram_id || null
     });
   }
 
@@ -362,7 +482,15 @@ async function createBusinessWithRestaurants(body = {}) {
     });
   }
 
-  return { business, created_restaurants: createdRestaurants, owner: ownerResult?.user || null, invites: ownerResult?.invites || [], payment };
+  return {
+    business,
+    created_restaurants: createdRestaurants,
+    integrations: createdIntegrations,
+    owner: ownerResult?.user || null,
+    access: ownerResult?.access || [],
+    invites: ownerResult?.invites || [],
+    payment
+  };
 }
 
 async function upsertBusiness(body) {
@@ -433,14 +561,19 @@ async function addBusinessUser(body) {
   const businessRole = cleanBusinessRole(body.business_role || body.businessRole || body.role);
   const restaurantRole = cleanRole(body.restaurant_role || body.restaurantRole || (businessRole === 'business_owner' ? 'owner' : 'manager'));
   const restaurantIds = unique(body.restaurant_ids || body.restaurantIds || []);
+  const telegramId = body.telegram_id ? String(body.telegram_id) : await findKnownTelegramId(username);
+  const permissions = normalizePermissions(businessRole, body.permissions);
 
   const payload = {
     business_id: businessId,
     username: `@${username}`,
     username_normalized: username,
-    telegram_id: body.telegram_id ? String(body.telegram_id) : null,
+    telegram_id: telegramId ? String(telegramId) : null,
     role: businessRole,
     status: 'active',
+    permissions,
+    restaurant_ids: restaurantIds,
+    removed_at: null,
     updated_at: new Date().toISOString()
   };
 
@@ -462,19 +595,32 @@ async function addBusinessUser(body) {
   }
 
   const createdInvites = [];
+  const createdAccess = [];
   for (const restaurantId of restaurantIds) {
-    const invite = await addPendingInvite({ username, restaurantId, role: restaurantRole, createdByTelegramId: body.created_by_telegram_id || null });
-    if (invite) createdInvites.push(invite);
+    const accessRow = await upsertRestaurantAccess({
+      telegramId,
+      username,
+      restaurantId,
+      role: restaurantRole,
+      createdByTelegramId: body.created_by_telegram_id || null
+    });
+    if (!accessRow) continue;
+    if (accessRow.status === 'pending') createdInvites.push(accessRow);
+    else createdAccess.push(accessRow);
   }
 
   if (businessRole === 'business_owner') {
     await supabaseFetch(`/rest/v1/platform_businesses?id=eq.${encode(businessId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ owner_username: username, owner_telegram_id: body.telegram_id ? String(body.telegram_id) : null, updated_at: new Date().toISOString() })
+      body: JSON.stringify({
+        owner_username: username,
+        owner_telegram_id: telegramId ? String(telegramId) : null,
+        updated_at: new Date().toISOString()
+      })
     }).catch(() => null);
   }
 
-  return { user, invites: createdInvites };
+  return { user, access: createdAccess, invites: createdInvites };
 }
 
 
@@ -545,6 +691,14 @@ export async function POST(request) {
       result = { integration: await updateRestaurantIntegration(body) };
     } else if (action === 'add_business_user' || action === 'assign_owner') {
       result = await addBusinessUser(body);
+    } else if (action === 'archive_business') {
+      const businessId = cleanText(body.business_id || body.businessId || body.id);
+      if (!businessId) throw new Error('business_id is required');
+      const archived = await supabaseFetch(`/rest/v1/platform_businesses?id=eq.${encode(businessId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'archived', updated_at: new Date().toISOString() })
+      }).catch(() => null);
+      result = { business: Array.isArray(archived) ? archived[0] : { id: businessId, status: 'archived' } };
     } else if (action === 'link_restaurants') {
       const businessId = cleanText(body.business_id || body.businessId);
       if (!businessId) throw new Error('business_id is required');
