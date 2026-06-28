@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const SETTINGS_STORAGE_KEY = 'lumora_settings_v16_saas_access';
 
@@ -55,11 +55,68 @@ const QUICK_QUESTIONS = [
   'Что проверить по рискам?'
 ];
 
+const BUSINESS_TIME_ZONE = 'Asia/Yekaterinburg';
+
 function getLocalDate() {
   const date = new Date();
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60000);
   return local.toISOString().slice(0, 10);
+}
+
+function getBusinessDate() {
+  try {
+    const parts = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: BUSINESS_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(new Date());
+    const pick = (type) => parts.find((part) => part.type === type)?.value;
+    const year = pick('year');
+    const month = pick('month');
+    const day = pick('day');
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {}
+  return getLocalDate();
+}
+
+function formatBusinessTime(value) {
+  if (!value) return '—';
+  try {
+    let date;
+    if (typeof value === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(value.trim())) {
+      const hhmmss = value.trim().length === 5 ? `${value.trim()}:00` : value.trim();
+      const utcDate = new Date().toISOString().slice(0, 10);
+      date = new Date(`${utcDate}T${hhmmss}Z`);
+    } else {
+      date = new Date(value);
+    }
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleTimeString('ru-RU', {
+      timeZone: BUSINESS_TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function formatBusinessDateTime(value) {
+  if (!value) return 'синхронизации ещё нет';
+  try {
+    return new Date(value).toLocaleString('ru-RU', {
+      timeZone: BUSINESS_TIME_ZONE,
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return String(value);
+  }
 }
 
 function loadSettings() {
@@ -123,9 +180,9 @@ function planLabel(period) {
 }
 
 function heroTitle(period) {
-  if (period === 'week') return 'Итоги недели';
-  if (period === 'month') return 'Итоги месяца';
-  return 'Итоги дня';
+  if (period === 'week') return 'Неделя';
+  if (period === 'month') return 'Месяц';
+  return 'Сегодня';
 }
 
 function toneClass(level) {
@@ -180,7 +237,7 @@ function TopBar({ summary, settings, setSettings, restaurantId, setRestaurantId,
         </select>
         <input type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label="Дата" />
       </div>
-      <div className="data-note">{summary?.period?.title || 'Данные iiko'} · обновлено {summary?.generatedAt || '—'}</div>
+      <div className="data-note">{summary?.period?.title || 'Данные iiko'} · обновлено {formatBusinessTime(summary?.generatedAt)} по Тюмени/Екб</div>
     </header>
   );
 }
@@ -727,7 +784,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <div className="hero-card revenue-hero-card">
         <div>
-          <div className="hero-headline-row"><span className="eyebrow">{heroTitle(period)}</span><span className="hero-badge">● {summary?.generatedAt || '—'} · авто-обновление</span></div>
+          <div className="hero-headline-row"><span className="eyebrow">{heroTitle(period)}</span><span className="hero-badge">● {formatBusinessTime(summary?.generatedAt)} · Тюмень/Екб</span></div>
           <h1>{money(revenue)}</h1>
           <p>{summary?.isEmptyPeriod ? 'Продаж за выбранный период пока нет.' : `${planLabel(period)} ${money(plan)} выполнен на ${planPercent}%.`}</p>
         </div>
@@ -1336,12 +1393,7 @@ function integrationTone(value) {
 }
 
 function formatSyncDate(value) {
-  if (!value) return 'синхронизации ещё нет';
-  try {
-    return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return String(value);
-  }
+  return formatBusinessDateTime(value);
 }
 
 function businessRestaurantsText(business) {
@@ -1478,6 +1530,34 @@ function isBusinessOwnerConsoleUser(authInfo) {
   return Boolean(permissions.can_manage_employees);
 }
 
+function getSafeRestaurantIdForAuth(authInfo, currentRestaurantId) {
+  if (!authInfo) return '';
+  const current = currentRestaurantId || 'all';
+  if (!isTelegramAccessMode(authInfo)) return current;
+  if (isPlatformOwnerUser(authInfo)) return current;
+
+  const allowedIds = getAllowedRestaurantIds(authInfo);
+  if (!allowedIds.length) return '';
+
+  if (current === 'all') {
+    return canUseAllRestaurants(authInfo) ? 'all' : allowedIds[0];
+  }
+
+  return allowedIds.includes(current) ? current : allowedIds[0];
+}
+
+function isSummaryAllowedForAuth(summary, authInfo) {
+  if (!summary) return true;
+  if (!isTelegramAccessMode(authInfo)) return true;
+  if (isPlatformOwnerUser(authInfo)) return true;
+
+  const allowedIds = getAllowedRestaurantIds(authInfo);
+  const selectedId = summary?.selectedRestaurantId || summary?.restaurant?.id;
+  if (!selectedId) return false;
+  if (selectedId === 'all') return canUseAllRestaurants(authInfo);
+  return allowedIds.includes(selectedId);
+}
+
 function getVisibleTabs(authInfo) {
   if (isTelegramAccessMode(authInfo) && !hasAnyProductAccess(authInfo)) return [];
 
@@ -1494,7 +1574,6 @@ function getVisibleTabs(authInfo) {
 
   if (getBusinessCabinetBusinesses(authInfo).length) {
     return [
-      ...(isBusinessOwnerConsoleUser(authInfo) ? [{ id: 'client', label: 'Мой бизнес' }] : []),
       ...dashboardTabs,
       ...(canSeeSection(authInfo, 'control') ? [{ id: 'control', label: 'Управление' }] : [])
     ];
@@ -3251,7 +3330,7 @@ function NotificationsModal({ summary, close }) {
 export default function Page() {
   const [tab, setTab] = useState('today');
   const [period, setPeriod] = useState('day');
-  const [date, setDate] = useState(getLocalDate());
+  const [date, setDate] = useState(getBusinessDate());
   const [restaurantId, setRestaurantId] = useState('all');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [summary, setSummary] = useState(null);
@@ -3260,6 +3339,8 @@ export default function Page() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [authInfo, setAuthInfo] = useState(null);
   const [initialRouteApplied, setInitialRouteApplied] = useState(false);
+  const [summaryContext, setSummaryContext] = useState('');
+  const summaryRequestRef = useRef(0);
 
   const sourceRestaurants = authInfo?.restaurants?.length ? authInfo.restaurants : (summary?.network?.restaurants || []);
   const restaurants = filterRestaurantsByAccess(sourceRestaurants, authInfo);
@@ -3277,16 +3358,57 @@ export default function Page() {
     }
   }
 
-  async function loadSummary() {
+  async function loadSummary(options = {}) {
+    const silent = Boolean(options.silent);
+    const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+
+    if (!authInfo) {
+      setLoading(true);
+      return;
+    }
+
+    if (!safeRestaurantId || shouldBlockDashboard(authInfo, settings)) {
+      setSummary(null);
+      setSummaryContext('');
+      setLoading(false);
+      return;
+    }
+
+    if (safeRestaurantId !== restaurantId) {
+      setSummary(null);
+      setSummaryContext('');
+      setLoading(true);
+      setRestaurantId(safeRestaurantId);
+      return;
+    }
+
+    const nextContext = `${safeRestaurantId}:${period}:${date}`;
+    const requestId = summaryRequestRef.current + 1;
+    summaryRequestRef.current = requestId;
+
     try {
       setError('');
-      const response = await fetch(`/api/summary?restaurant_id=${restaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      if (!silent || summaryContext !== nextContext) {
+        setSummary(null);
+        setLoading(true);
+      }
+      const response = await fetch(`/api/summary?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
       const data = await response.json();
+      if (summaryRequestRef.current !== requestId) return;
+      if (!isSummaryAllowedForAuth(data, authInfo)) {
+        setSummary(null);
+        setSummaryContext('');
+        setError('Эти данные недоступны для текущего Telegram-пользователя.');
+        return;
+      }
       setSummary(data);
+      setSummaryContext(nextContext);
     } catch {
-      setError('Не удалось загрузить данные. Проверь /api/summary и ENV в Vercel.');
+      if (summaryRequestRef.current === requestId) {
+        setError('Не удалось загрузить данные. Проверь /api/summary и ENV в Vercel.');
+      }
     } finally {
-      setLoading(false);
+      if (summaryRequestRef.current === requestId) setLoading(false);
     }
   }
 
@@ -3300,18 +3422,13 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!isTelegramAccessMode(authInfo)) return;
-
-    const allowedIds = getAllowedRestaurantIds(authInfo);
-    if (!allowedIds.length) return;
-
-    if (restaurantId === 'all' && !canUseAllRestaurants(authInfo)) {
-      setRestaurantId(allowedIds[0]);
-      return;
-    }
-
-    if (restaurantId !== 'all' && !allowedIds.includes(restaurantId)) {
-      setRestaurantId(allowedIds[0]);
+    if (!authInfo) return;
+    const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+    if (safeRestaurantId && safeRestaurantId !== restaurantId) {
+      setSummary(null);
+      setSummaryContext('');
+      setLoading(true);
+      setRestaurantId(safeRestaurantId);
     }
   }, [authInfo, restaurantId]);
 
@@ -3338,19 +3455,38 @@ export default function Page() {
     }
   }, [authInfo, tab]);
 
-  useEffect(() => { loadSummary(); }, [restaurantId, period, date]);
+  useEffect(() => {
+    if (!authInfo) return;
+    loadSummary({ silent: false });
+  }, [authInfo, restaurantId, period, date]);
 
   useEffect(() => {
-    if (!settings.autoRefresh) return undefined;
-    const id = setInterval(loadSummary, 30000);
+    if (!authInfo || !settings.autoRefresh) return undefined;
+    const id = setInterval(() => loadSummary({ silent: true }), 30000);
     return () => clearInterval(id);
-  }, [settings.autoRefresh, restaurantId, period, date]);
+  }, [authInfo, settings.autoRefresh, restaurantId, period, date, summaryContext]);
 
   function openRestaurantDashboard(nextRestaurantId, nextTab = 'today') {
     if (!nextRestaurantId) return;
+    setSummary(null);
+    setSummaryContext('');
     setRestaurantId(nextRestaurantId);
     setPeriod('day');
     setTab(nextTab || 'today');
+    setLoading(true);
+  }
+
+  function changeRestaurant(nextRestaurantId) {
+    setSummary(null);
+    setSummaryContext('');
+    setRestaurantId(nextRestaurantId);
+    setLoading(true);
+  }
+
+  function changeDate(nextDate) {
+    setSummary(null);
+    setSummaryContext('');
+    setDate(nextDate);
     setLoading(true);
   }
 
@@ -3360,7 +3496,8 @@ export default function Page() {
   }, [restaurantId, restaurants]);
 
   const screen = useMemo(() => {
-    if (loading) return <div className="loading"><span />Загружаем Lumora…</div>;
+    if (!authInfo) return <div className="loading auth-gate"><span />Проверяем доступ…</div>;
+    if (loading && !summary) return <div className="loading"><span />Загружаем данные…</div>;
     if (error) return <div className="loading error"><p>{error}</p><button onClick={loadSummary}>Повторить</button></div>;
     if (shouldBlockDashboard(authInfo, settings)) return <NoAccessScreen authInfo={authInfo} />;
     const visibleTabs = getVisibleTabs(authInfo);
@@ -3423,7 +3560,7 @@ export default function Page() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div>
                     <small style={{ color: 'var(--muted)' }}>Главный экран владельца бизнеса</small>
-                    <h1 style={{ margin: '4px 0 6px', fontSize: 24 }}>Мой бизнес</h1>
+                    <h1 style={{ margin: '4px 0 6px', fontSize: 24 }}>Кабинет клиента</h1>
                     <p style={{ margin: 0, color: 'var(--muted)' }}>Ресторатор сначала видит свою сеть, рестораны и сотрудников. В статистику он проваливается только после выбора своей точки.</p>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3443,7 +3580,7 @@ export default function Page() {
           </>
         ) : (
           <>
-            <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={setRestaurantId} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={setDate} openNotifications={() => setShowNotifications(true)} />
+            <TopBar summary={summary} settings={settings} setSettings={setSettings} restaurantId={restaurantId} setRestaurantId={changeRestaurant} restaurants={restaurants} canSelectAll={canSelectAll} date={date} setDate={changeDate} openNotifications={() => setShowNotifications(true)} />
             <TopTabs tab={tab} setTab={setTab} authInfo={authInfo} />
             {isPlatformOwnerUser(authInfo) ? (
               <div className="owner-return-strip">
