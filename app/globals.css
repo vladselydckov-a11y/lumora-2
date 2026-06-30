@@ -2873,3 +2873,118 @@ body.light .production-row {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.22);
 }
+
+/* KLIK Production Polish Pack 4: weekday plans + widget visibility */
+.control-note {
+  display: grid;
+  gap: 5px;
+  padding: 14px 15px;
+  margin: 0 0 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.control-note b,
+.control-subtitle {
+  color: rgba(255, 255, 255, 0.96);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.control-note p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.control-subtitle {
+  margin: 18px 0 10px;
+  font-size: 14px;
+}
+
+.weekday-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+.weekday-plan-grid label {
+  margin: 0 !important;
+  padding: 12px !important;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.weekday-plan-grid label span {
+  color: rgba(255, 255, 255, 0.74) !important;
+  font-weight: 850;
+}
+
+.weekday-plan-grid input {
+  min-height: 44px !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  font-size: 15px !important;
+}
+
+.section-toggle-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.widget-toggle-row {
+  min-height: 72px;
+}
+
+:root[data-theme="light"] .control-note,
+body.light .control-note,
+html[data-theme="light"] .control-note,
+:root[data-theme="light"] .weekday-plan-grid label,
+body.light .weekday-plan-grid label,
+html[data-theme="light"] .weekday-plan-grid label,
+:root[data-theme="light"] .widget-toggle-row,
+body.light .widget-toggle-row,
+html[data-theme="light"] .widget-toggle-row {
+  background: linear-gradient(135deg, rgba(12, 64, 136, 0.96), rgba(35, 126, 230, 0.94)) !important;
+  border-color: rgba(29, 113, 219, 0.28) !important;
+  box-shadow: 0 14px 34px rgba(20, 91, 184, 0.14) !important;
+}
+
+:root[data-theme="light"] .control-note b,
+:root[data-theme="light"] .control-note p,
+:root[data-theme="light"] .control-subtitle,
+:root[data-theme="light"] .weekday-plan-grid label span,
+:root[data-theme="light"] .widget-toggle-row b,
+:root[data-theme="light"] .widget-toggle-row p,
+body.light .control-note b,
+body.light .control-note p,
+body.light .control-subtitle,
+body.light .weekday-plan-grid label span,
+body.light .widget-toggle-row b,
+body.light .widget-toggle-row p,
+html[data-theme="light"] .control-note b,
+html[data-theme="light"] .control-note p,
+html[data-theme="light"] .control-subtitle,
+html[data-theme="light"] .weekday-plan-grid label span,
+html[data-theme="light"] .widget-toggle-row b,
+html[data-theme="light"] .widget-toggle-row p {
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+
+:root[data-theme="light"] .weekday-plan-grid input,
+body.light .weekday-plan-grid input,
+html[data-theme="light"] .weekday-plan-grid input {
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #10233f !important;
+  border-color: rgba(255, 255, 255, 0.58) !important;
+}
+
+@media (max-width: 430px) {
+  .weekday-plan-grid {
+    grid-template-columns: 1fr;
+  }
+}
