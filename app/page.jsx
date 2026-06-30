@@ -4,6 +4,48 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const SETTINGS_STORAGE_KEY = 'lumora_settings_v16_saas_access';
 
+const WEEKDAY_PLAN_DEFAULTS = {
+  mon: 150000,
+  tue: 150000,
+  wed: 150000,
+  thu: 150000,
+  fri: 180000,
+  sat: 220000,
+  sun: 180000
+};
+
+const WEEKDAY_LABELS = [
+  { key: 'mon', label: 'Пн' },
+  { key: 'tue', label: 'Вт' },
+  { key: 'wed', label: 'Ср' },
+  { key: 'thu', label: 'Чт' },
+  { key: 'fri', label: 'Пт' },
+  { key: 'sat', label: 'Сб' },
+  { key: 'sun', label: 'Вс' }
+];
+
+const VISIBLE_SECTION_DEFAULTS = {
+  forecast: true,
+  network: true,
+  categories: true,
+  discounts: true,
+  hourly: true,
+  production: true,
+  aiSignal: true
+};
+
+const MAIN_CARD_KEYS = ['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'];
+
+const WIDGET_SECTION_LABELS = [
+  { key: 'forecast', title: 'Прогноз выручки', text: 'план-факт и прогноз по темпу' },
+  { key: 'network', title: 'Точки сети', text: 'Азиаток / Акватория / вся сеть' },
+  { key: 'categories', title: 'Категории', text: 'топ категорий по выручке' },
+  { key: 'discounts', title: 'Скидки', text: 'контроль процента скидок' },
+  { key: 'hourly', title: 'Выручка по часам', text: 'пики и слабые часы' },
+  { key: 'production', title: 'Тип производства', text: 'цеха из production_sales' },
+  { key: 'aiSignal', title: 'КЛИК-сигнал', text: 'короткий AI-вывод' }
+];
+
 const DEFAULT_SETTINGS = {
   theme: 'light',
   accent: 'gold',
@@ -11,6 +53,7 @@ const DEFAULT_SETTINGS = {
   planDay: 150000,
   planWeek: 500000,
   planMonth: 3000000,
+  weeklyPlans: WEEKDAY_PLAN_DEFAULTS,
   avgCheckTarget: 2200,
   avgGuestTarget: 1700,
   foodcostEnabled: false,
@@ -29,7 +72,8 @@ const DEFAULT_SETTINGS = {
     avgGuest: true,
     foodcost: false,
     discounts: true
-  }
+  },
+  visibleSections: VISIBLE_SECTION_DEFAULTS
 };
 
 const TABS = [
@@ -126,7 +170,9 @@ function loadSettings() {
     return {
       ...DEFAULT_SETTINGS,
       ...(stored || {}),
-      visible: { ...DEFAULT_SETTINGS.visible, ...(stored?.visible || {}) }
+      visible: { ...DEFAULT_SETTINGS.visible, ...(stored?.visible || {}) },
+      visibleSections: { ...VISIBLE_SECTION_DEFAULTS, ...(stored?.visibleSections || {}) },
+      weeklyPlans: { ...WEEKDAY_PLAN_DEFAULTS, ...(stored?.weeklyPlans || {}) }
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -161,10 +207,21 @@ function metricRaw(summary, key) {
   return Number(metric(summary, key)?.raw || 0);
 }
 
-function activePlan(settings, period) {
+function getWeekdayKey(dateString) {
+  try {
+    const date = dateString ? new Date(`${dateString}T12:00:00`) : new Date();
+    const day = date.getDay();
+    return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][day] || 'mon';
+  } catch {
+    return 'mon';
+  }
+}
+
+function activePlan(settings, period, dateString) {
   if (period === 'week') return Number(settings.planWeek || 0);
   if (period === 'month') return Number(settings.planMonth || 0);
-  return Number(settings.planDay || 0);
+  const weekdayKey = getWeekdayKey(dateString);
+  return Number(settings.weeklyPlans?.[weekdayKey] || settings.planDay || 0);
 }
 
 function periodTitle(period) {
@@ -632,7 +689,7 @@ function OwnerReportBlock({ summary, compact = false }) {
 function ExecutiveFocusBlock({ summary, settings, setTab }) {
   const revenue = metricRaw(summary, 'revenue');
   const selectedPeriod = summary?.period?.type || 'day';
-  const plan = activePlan(settings, selectedPeriod);
+  const plan = activePlan(settings, selectedPeriod, summary?.period?.startDate || summary?.period?.date);
   const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
   const gap = Math.max(plan - revenue, 0);
   const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
@@ -765,7 +822,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod, productionT
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
   const guests = metricRaw(summary, 'guests');
-  const plan = activePlan(settings, period);
+  const plan = activePlan(settings, period, summary?.period?.startDate || summary?.period?.date);
   const planPercent = plan ? Math.round((revenue / plan) * 100) : 0;
   const visible = ['checks', 'avgCheck', 'guests', 'avgGuest']
     .filter((key) => settings.visible?.[key] !== false)
@@ -807,38 +864,44 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod, productionT
         </div>
       ) : null}
 
-      <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
-        <div className="forecast-grid">
-          <div><span>Сейчас</span><b>{money(revenue)}</b></div>
-          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
-          <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
-        </div>
-        <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
-      </Section>
-
-      <NetworkPointsBlock summary={summary} compact />
-
-      <Section title="Топ-10 категорий по выручке" subtitle="что приносит основную кассу">
-        {summary?.categories?.length ? summary.categories.slice(0, 10).map((item) => (
-          <div className="category-row" key={item.name}>
-            <div><b>{item.name}</b><span>{num(item.quantity)} продаж</span></div>
-            <div><strong>{item.revenueText}</strong><span>{item.cost > 0 ? `Фудкост: ${item.foodcostText} · Маржа: ${item.marginText}` : 'Себестоимость не подключена'}</span></div>
+      {settings.visibleSections?.forecast !== false ? (
+        <Section title="Прогноз выручки" subtitle="по текущему темпу и плану" action={<button onClick={() => setTab('plan')}>план</button>}>
+          <div className="forecast-grid">
+            <div><span>Сейчас</span><b>{money(revenue)}</b></div>
+            <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b></div>
+            <div><span>{planLabel(period)}</span><b>{money(plan)}</b></div>
           </div>
-        )) : <EmptyState title="Категорий пока нет" />}
-      </Section>
+          <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
+        </Section>
+      ) : null}
 
-      <DiscountAnalyticsBlock summary={summary} compact />
+      {settings.visibleSections?.network !== false ? <NetworkPointsBlock summary={summary} compact /> : null}
 
-      <HourlyAnalyticsBlock summary={summary} compact />
+      {settings.visibleSections?.categories !== false ? (
+        <Section title="Топ-10 категорий по выручке" subtitle="что приносит основную кассу">
+          {summary?.categories?.length ? summary.categories.slice(0, 10).map((item) => (
+            <div className="category-row" key={item.name}>
+              <div><b>{item.name}</b><span>{num(item.quantity)} продаж</span></div>
+              <div><strong>{item.revenueText}</strong><span>{item.cost > 0 ? `Фудкост: ${item.foodcostText} · Маржа: ${item.marginText}` : 'Себестоимость не подключена'}</span></div>
+            </div>
+          )) : <EmptyState title="Категорий пока нет" />}
+        </Section>
+      ) : null}
 
-      <ProductionTypesBlock productionTypes={productionTypes} loading={productionLoading} />
+      {settings.visibleSections?.discounts !== false ? <DiscountAnalyticsBlock summary={summary} compact /> : null}
 
-      <Section title="КЛИК-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
-        <div className="ai-note">
-          <b>{summary?.ai?.summary || 'КЛИК ждёт данные.'}</b>
-          <p>{summary?.ai?.recommendations?.[0] || 'После обновления iiko появятся рекомендации.'}</p>
-        </div>
-      </Section>
+      {settings.visibleSections?.hourly !== false ? <HourlyAnalyticsBlock summary={summary} compact /> : null}
+
+      {settings.visibleSections?.production !== false ? <ProductionTypesBlock productionTypes={productionTypes} loading={productionLoading} /> : null}
+
+      {settings.visibleSections?.aiSignal !== false ? (
+        <Section title="КЛИК-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
+          <div className="ai-note">
+            <b>{summary?.ai?.summary || 'КЛИК ждёт данные.'}</b>
+            <p>{summary?.ai?.recommendations?.[0] || 'После обновления iiko появятся рекомендации.'}</p>
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -1026,7 +1089,7 @@ function buildWeeklyPlanText(summary, settings) {
   const guests = metricRaw(summary, 'guests');
   const avgCheck = metricRaw(summary, 'avgCheck');
   const selectedPeriod = summary?.period?.type || 'week';
-  const plan = activePlan(settings, selectedPeriod);
+  const plan = activePlan(settings, selectedPeriod, summary?.period?.startDate || summary?.period?.date);
   const percent = plan ? Math.round((revenue / plan) * 100) : 0;
   const gap = Math.max(plan - revenue, 0);
   const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
@@ -1073,7 +1136,7 @@ function WeeklyActionPlanBlock({ summary, settings, compact = false }) {
   const [copied, setCopied] = useState(false);
   const revenue = metricRaw(summary, 'revenue');
   const selectedPeriod = summary?.period?.type || 'week';
-  const plan = activePlan(settings, selectedPeriod);
+  const plan = activePlan(settings, selectedPeriod, summary?.period?.startDate || summary?.period?.date);
   const percent = plan ? Math.round((revenue / plan) * 100) : 0;
   const gap = Math.max(plan - revenue, 0);
   const bestHour = summary?.hourlyAnalytics?.bestHour || summary?.hourlyPeaks?.[0];
@@ -1117,7 +1180,7 @@ function WeeklyActionPlanBlock({ summary, settings, compact = false }) {
 function PlanScreen({ summary, settings }) {
   const revenue = metricRaw(summary, 'revenue');
   const selectedPeriod = summary?.period?.type || 'day';
-  const plan = activePlan(settings, selectedPeriod);
+  const plan = activePlan(settings, selectedPeriod, summary?.period?.startDate || summary?.period?.date);
   const percent = plan ? Math.round((revenue / plan) * 100) : 0;
   const gap = Math.max(plan - revenue, 0);
   return (
@@ -3231,10 +3294,37 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
     setTimeout(() => setSaved(false), 900);
   }
 
+  function updateWeeklyPlan(key, value) {
+    const next = { ...settings, weeklyPlans: { ...WEEKDAY_PLAN_DEFAULTS, ...(settings.weeklyPlans || {}), [key]: value } };
+    setSettings(next);
+    saveSettings(next);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 900);
+  }
+
+  function updateVisibleSection(key, value) {
+    const next = { ...settings, visibleSections: { ...VISIBLE_SECTION_DEFAULTS, ...(settings.visibleSections || {}), [key]: value } };
+    setSettings(next);
+    saveSettings(next);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 900);
+  }
+
   return (
     <div className="screen-stack control-screen">
-      <Section title="Управление" subtitle={saved ? 'изменения сразу применены' : 'редактирование интерфейса и целей'}>
-        <label><span>План выручки на день</span><input type="number" value={settings.planDay} onChange={(e) => update('planDay', Number(e.target.value))} /></label>
+      <Section title="Управление" subtitle={saved ? 'изменения сразу применены' : 'планы, цели и главный экран'}>
+        <div className="control-note">
+          <b>Планы по дням недели</b>
+          <p>Для “Сегодня” КЛИК берёт план конкретного дня недели. Неделя и месяц остаются отдельными целями.</p>
+        </div>
+        <div className="weekday-plan-grid">
+          {WEEKDAY_LABELS.map((day) => (
+            <label key={day.key}>
+              <span>{day.label}</span>
+              <input type="number" value={settings.weeklyPlans?.[day.key] ?? WEEKDAY_PLAN_DEFAULTS[day.key]} onChange={(e) => updateWeeklyPlan(day.key, Number(e.target.value))} />
+            </label>
+          ))}
+        </div>
         <label><span>План выручки на неделю</span><input type="number" value={settings.planWeek} onChange={(e) => update('planWeek', Number(e.target.value))} /></label>
         <label><span>План выручки на месяц</span><input type="number" value={settings.planMonth} onChange={(e) => update('planMonth', Number(e.target.value))} /></label>
         <label><span>Цель среднего чека</span><input type="number" value={settings.avgCheckTarget} onChange={(e) => update('avgCheckTarget', Number(e.target.value))} /></label>
@@ -3290,11 +3380,22 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
       {getBusinessCabinetBusinesses(authInfo).length ? <ClientBusinessCabinetBlock authInfo={authInfo} /> : null}
       {!isTelegramAccessMode(authInfo) ? <AccessAdminBlock summary={summary} authInfo={authInfo} /> : null}
 
-      <Section title="Карточки на главном экране" subtitle="всё меняется сразу">
-        {['revenue', 'avgCheck', 'checks', 'guests', 'avgGuest', 'foodcost', 'discounts'].map((key) => {
+      <Section title="Главный экран" subtitle="выбери, что владелец хочет видеть первым">
+        <div className="control-subtitle">Карточки KPI</div>
+        {MAIN_CARD_KEYS.map((key) => {
           const item = metric(summary, key);
           return <div className="control-row" key={key}><div><b>{item?.label || key}</b><p>{item?.value || '—'}</p></div><input type="checkbox" checked={settings.visible?.[key] !== false} onChange={(e) => updateVisible(key, e.target.checked)} /></div>;
         })}
+        <div className="control-subtitle">Виджеты ниже карточек</div>
+        <div className="section-toggle-grid">
+          {WIDGET_SECTION_LABELS.map((item) => (
+            <div className="control-row widget-toggle-row" key={item.key}>
+              <div><b>{item.title}</b><p>{item.text}</p></div>
+              <input type="checkbox" checked={settings.visibleSections?.[item.key] !== false} onChange={(e) => updateVisibleSection(item.key, e.target.checked)} />
+            </div>
+          ))}
+        </div>
+        <p className="soft-text">Порядок виджетов пока фиксированный, чтобы не сломать главный экран перед показом. Включение и выключение работает сразу.</p>
       </Section>
       <DataReadinessBlock summary={summary} />
       <button className="primary-btn" onClick={reload}>Обновить данные из API</button>
