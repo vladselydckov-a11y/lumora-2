@@ -3129,3 +3129,113 @@ html[data-theme="light"] .weekday-plan-grid input {
   .abc-row { grid-template-columns: 30px 1fr; }
   .abc-row strong { grid-column: 2; text-align: left; }
 }
+
+/* Pack 6: Stop-list analytics */
+.stop-list-panel .stop-summary {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  margin-bottom: 12px;
+}
+
+.stop-list-panel .stop-summary > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.stop-list-panel .stop-summary b {
+  color: var(--text);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.stop-list-panel .stop-summary p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.stop-list-panel .stop-summary.danger {
+  background: linear-gradient(135deg, rgba(255, 107, 107, 0.18), rgba(255, 196, 87, 0.08));
+  border-color: rgba(255, 107, 107, 0.32);
+}
+
+.stop-list-panel .stop-summary.good {
+  background: linear-gradient(135deg, rgba(118, 221, 131, 0.14), rgba(37, 116, 255, 0.08));
+  border-color: rgba(118, 221, 131, 0.26);
+}
+
+.stop-list-items {
+  display: grid;
+  gap: 10px;
+}
+
+.stop-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.stop-row small {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 5px;
+}
+
+.stop-row b {
+  color: var(--text);
+  display: block;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.stop-row p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.stop-row strong {
+  color: var(--orange);
+  white-space: nowrap;
+  align-self: center;
+  font-size: 16px;
+}
+
+.stop-row.bad {
+  border-color: rgba(255, 107, 107, 0.36);
+  background: linear-gradient(135deg, rgba(255, 107, 107, 0.14), rgba(255, 255, 255, 0.06));
+}
+
+.stop-row.warn {
+  border-color: rgba(255, 196, 87, 0.30);
+}
+
+:root[data-theme='light'] .stop-list-panel .stop-summary,
+:root[data-theme='light'] .stop-row {
+  background: linear-gradient(135deg, rgba(239, 247, 255, 0.96), rgba(255, 255, 255, 0.96));
+  border-color: rgba(62, 102, 166, 0.22);
+}
+
+:root[data-theme='light'] .stop-list-panel .stop-summary.danger {
+  background: linear-gradient(135deg, rgba(255, 235, 230, 0.98), rgba(255, 255, 255, 0.98));
+  border-color: rgba(255, 107, 107, 0.28);
+}
+
+:root[data-theme='light'] .stop-list-panel .stop-summary.good {
+  background: linear-gradient(135deg, rgba(231, 255, 238, 0.98), rgba(255, 255, 255, 0.98));
+  border-color: rgba(60, 164, 96, 0.22);
+}
