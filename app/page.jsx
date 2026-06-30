@@ -764,6 +764,169 @@ function MenuStrategyBlock({ summary }) {
   );
 }
 
+
+function dishRevenueRaw(dish) {
+  return Number(dish?.rawRevenue ?? String(dish?.revenue || '0').replace(/[^0-9.,-]/g, '').replace(',', '.') ?? 0) || 0;
+}
+
+function dishQtyRaw(dish) {
+  return Number(dish?.rawAmount ?? String(dish?.amount || '0').replace(/[^0-9.,-]/g, '').replace(',', '.') ?? 0) || 0;
+}
+
+function dishMarginRaw(dish) {
+  const direct = Number(dish?.rawMargin);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const foodcost = Number(dish?.rawFoodcost);
+  if (Number.isFinite(foodcost) && foodcost > 0) return Math.max(0, 100 - foodcost);
+  return 0;
+}
+
+function menuAbcGroups(summary) {
+  const source = [
+    ...(summary?.topDishes || []),
+    ...(summary?.lowDishes || []),
+    ...(summary?.topDishes30Days || [])
+  ];
+  const byName = new Map();
+
+  for (const dish of source) {
+    const name = String(dish?.name || '').trim();
+    if (!name) continue;
+    const current = byName.get(name);
+    const revenue = dishRevenueRaw(dish);
+    if (!current || revenue > dishRevenueRaw(current)) byName.set(name, dish);
+  }
+
+  const dishes = [...byName.values()].map((dish) => ({
+    ...dish,
+    revenueRaw: dishRevenueRaw(dish),
+    qtyRaw: dishQtyRaw(dish),
+    marginRaw: dishMarginRaw(dish)
+  })).filter((dish) => dish.revenueRaw > 0 || dish.qtyRaw > 0);
+
+  if (!dishes.length) {
+    return {
+      hit: [],
+      work: [],
+      meh: [],
+      weak: []
+    };
+  }
+
+  const sortedByRevenue = [...dishes].sort((a, b) => b.revenueRaw - a.revenueRaw);
+  const sortedByQty = [...dishes].sort((a, b) => b.qtyRaw - a.qtyRaw);
+  const topRevenueBorder = Math.max(1, Math.ceil(sortedByRevenue.length * 0.35));
+  const topQtyBorder = Math.max(1, Math.ceil(sortedByQty.length * 0.35));
+  const topRevenueNames = new Set(sortedByRevenue.slice(0, topRevenueBorder).map((dish) => dish.name));
+  const topQtyNames = new Set(sortedByQty.slice(0, topQtyBorder).map((dish) => dish.name));
+  const maxRevenue = sortedByRevenue[0]?.revenueRaw || 1;
+
+  const groups = {
+    hit: [],
+    work: [],
+    meh: [],
+    weak: []
+  };
+
+  for (const dish of dishes) {
+    const highRevenue = topRevenueNames.has(dish.name) || dish.revenueRaw >= maxRevenue * 0.45;
+    const highQty = topQtyNames.has(dish.name);
+    const hasMargin = dish.marginRaw > 0;
+    const goodMargin = hasMargin ? dish.marginRaw >= 65 : true;
+    const lowMargin = hasMargin ? dish.marginRaw < 55 : false;
+
+    let bucket = 'meh';
+    if (highRevenue && goodMargin) bucket = 'hit';
+    else if ((highRevenue || highQty) && !lowMargin) bucket = 'work';
+    else if (!highRevenue && goodMargin) bucket = 'meh';
+    else bucket = 'weak';
+
+    groups[bucket].push(dish);
+  }
+
+  for (const key of Object.keys(groups)) {
+    groups[key].sort((a, b) => b.revenueRaw - a.revenueRaw);
+  }
+
+  return groups;
+}
+
+function MenuAbcBlock({ summary }) {
+  const groups = menuAbcGroups(summary);
+  const cards = [
+    {
+      key: 'hit',
+      title: 'Хит продаж',
+      emoji: '⭐',
+      text: 'высокая выручка и нормальная маржа',
+      advice: 'Оставить в фокусе, не ломать цену и качество.',
+      items: groups.hit
+    },
+    {
+      key: 'work',
+      title: 'Рабочая схема',
+      emoji: '🐎',
+      text: 'продаётся стабильно, требует контроля себестоимости',
+      advice: 'Держать в меню, смотреть фудкост и подачу.',
+      items: groups.work
+    },
+    {
+      key: 'meh',
+      title: 'Ну такое',
+      emoji: '❔',
+      text: 'потенциал есть, но продаж мало',
+      advice: 'Проверить фото, описание, место в меню и рекомендации официантов.',
+      items: groups.meh
+    },
+    {
+      key: 'weak',
+      title: 'Слабое звено',
+      emoji: '🦴',
+      text: 'низкая выручка и/или слабая маржа',
+      advice: 'Рассмотреть переработку, паузу или удаление из меню.',
+      items: groups.weak
+    }
+  ];
+  const totalItems = cards.reduce((sum, card) => sum + card.items.length, 0);
+
+  return (
+    <Section title="ABC-анализ меню" subtitle="что продвигать, держать, проверить или убрать">
+      {totalItems ? (
+        <>
+          <div className="abc-card-grid">
+            {cards.map((card) => {
+              const leader = card.items[0];
+              return (
+                <div className={`abc-card abc-${card.key}`} key={card.key}>
+                  <div className="abc-card-head"><span>{card.emoji}</span><b>{card.title}</b><em>{card.items.length}</em></div>
+                  <p>{card.text}</p>
+                  <strong>{leader?.name || 'нет позиций'}</strong>
+                  <small>{leader ? `${leader.revenue || money(leader.revenueRaw)} · ${leader.amount || num(leader.qtyRaw)}` : card.advice}</small>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="abc-list">
+            {cards.map((card) => card.items.slice(0, 4).map((dish, index) => (
+              <div className={`abc-row abc-${card.key}`} key={`${card.key}-${dish.name}-${index}`}>
+                <span>{card.emoji}</span>
+                <div>
+                  <b>{dish.name}</b>
+                  <p>{card.title} · {dish.category || 'Меню'} · {dish.amount || `${num(dish.qtyRaw)} продаж`} · маржа {dish.marginRaw ? `${Math.round(dish.marginRaw)}%` : 'на проверке'}</p>
+                </div>
+                <strong>{dish.revenue || money(dish.revenueRaw)}</strong>
+              </div>
+            ))) }
+          </div>
+
+          <p className="soft-text">КЛИК считает блок по реальным продажам iiko. Если маржа по блюду не подключена, позиция классифицируется осторожно и помечается как “на проверке”.</p>
+        </>
+      ) : <EmptyState title="ABC-анализ пока пустой" text="После загрузки dish_sales появятся группы меню." />}
+    </Section>
+  );
+}
+
 function WaiterShiftScriptBlock({ summary }) {
   const [copied, setCopied] = useState(false);
   const waiters = summary?.waiters || [];
@@ -950,6 +1113,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
           </div>
         )) : <EmptyState title="Категорий пока нет" />}
       </Section>
+
+      <MenuAbcBlock summary={summary} />
 
       <MenuStrategyBlock summary={summary} />
 
