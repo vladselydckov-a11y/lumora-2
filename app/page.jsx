@@ -163,17 +163,22 @@ function formatBusinessDateTime(value) {
   }
 }
 
+function normalizeSettings(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    ...DEFAULT_SETTINGS,
+    ...source,
+    visible: { ...DEFAULT_SETTINGS.visible, ...(source.visible || {}) },
+    visibleSections: { ...VISIBLE_SECTION_DEFAULTS, ...(source.visibleSections || {}) },
+    weeklyPlans: { ...WEEKDAY_PLAN_DEFAULTS, ...(source.weeklyPlans || {}) }
+  };
+}
+
 function loadSettings() {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
     const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
-    return {
-      ...DEFAULT_SETTINGS,
-      ...(stored || {}),
-      visible: { ...DEFAULT_SETTINGS.visible, ...(stored?.visible || {}) },
-      visibleSections: { ...VISIBLE_SECTION_DEFAULTS, ...(stored?.visibleSections || {}) },
-      weeklyPlans: { ...WEEKDAY_PLAN_DEFAULTS, ...(stored?.weeklyPlans || {}) }
-    };
+    return normalizeSettings(stored);
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -3498,13 +3503,13 @@ function AccessAdminBlock({ summary, authInfo }) {
   );
 }
 
-function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
+function ControlScreen({ settings, setSettings, persistSettings, summary, reload, authInfo }) {
   const [saved, setSaved] = useState(false);
 
   function update(key, value) {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    saveSettings(next);
+    (persistSettings || saveSettings)(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 900);
   }
@@ -3512,7 +3517,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
   function updateVisible(key, value) {
     const next = { ...settings, visible: { ...settings.visible, [key]: value } };
     setSettings(next);
-    saveSettings(next);
+    (persistSettings || saveSettings)(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 900);
   }
@@ -3520,7 +3525,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
   function updateWeeklyPlan(key, value) {
     const next = { ...settings, weeklyPlans: { ...WEEKDAY_PLAN_DEFAULTS, ...(settings.weeklyPlans || {}), [key]: value } };
     setSettings(next);
-    saveSettings(next);
+    (persistSettings || saveSettings)(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 900);
   }
@@ -3528,7 +3533,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
   function updateVisibleSection(key, value) {
     const next = { ...settings, visibleSections: { ...VISIBLE_SECTION_DEFAULTS, ...(settings.visibleSections || {}), [key]: value } };
     setSettings(next);
-    saveSettings(next);
+    (persistSettings || saveSettings)(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 900);
   }
@@ -3659,6 +3664,8 @@ export default function Page() {
   const [productionLoading, setProductionLoading] = useState(false);
   const [stopListData, setStopListData] = useState({ items: [] });
   const [stopListLoading, setStopListLoading] = useState(false);
+  const settingsRequestRef = useRef(0);
+  const settingsSaveRef = useRef(null);
 
   const sourceRestaurants = authInfo?.restaurants?.length ? authInfo.restaurants : (summary?.network?.restaurants || []);
   const restaurants = filterRestaurantsByAccess(sourceRestaurants, authInfo);
@@ -3674,6 +3681,53 @@ export default function Page() {
     } catch {
       setAuthInfo({ ok: false, mode: 'auth-error' });
     }
+  }
+
+  async function loadDashboardSettings(options = {}) {
+    if (!authInfo) return;
+    const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+    if (!safeRestaurantId || shouldBlockDashboard(authInfo, settings)) return;
+
+    const requestId = settingsRequestRef.current + 1;
+    settingsRequestRef.current = requestId;
+
+    try {
+      const response = await fetch(`/api/settings/dashboard?restaurant_id=${safeRestaurantId}&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: telegramAuthHeaders()
+      });
+      const data = await response.json();
+      if (settingsRequestRef.current !== requestId) return;
+      if (!data?.ok || !data.settings || Object.keys(data.settings).length === 0) return;
+      const merged = normalizeSettings(data.settings);
+      setSettings(merged);
+      saveSettings(merged);
+    } catch {
+      // Если Supabase-настройки недоступны, остаёмся на локальных настройках.
+    }
+  }
+
+  function persistDashboardSettings(next) {
+    const normalized = normalizeSettings(next);
+    setSettings(normalized);
+    saveSettings(normalized);
+
+    if (settingsSaveRef.current) clearTimeout(settingsSaveRef.current);
+    settingsSaveRef.current = setTimeout(async () => {
+      if (!authInfo) return;
+      const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+      if (!safeRestaurantId || shouldBlockDashboard(authInfo, normalized)) return;
+
+      try {
+        await fetch('/api/settings/dashboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...telegramAuthHeaders() },
+          body: JSON.stringify({ restaurant_id: safeRestaurantId, settings: normalized })
+        });
+      } catch {
+        // Не ломаем интерфейс, если сохранение временно недоступно.
+      }
+    }, 500);
   }
 
   async function loadSummary(options = {}) {
@@ -3843,6 +3897,11 @@ export default function Page() {
 
   useEffect(() => {
     if (!authInfo) return;
+    loadDashboardSettings();
+  }, [authInfo, restaurantId]);
+
+  useEffect(() => {
+    if (!authInfo) return;
     loadSummary({ silent: false });
   }, [authInfo, restaurantId, period, date]);
 
@@ -3925,7 +3984,7 @@ export default function Page() {
     if (tab === 'analytics') return <AnalyticsScreen summary={summary} />;
     if (tab === 'plan') return <PlanScreen summary={summary} settings={settings} />;
     if (tab === 'risks') return <RisksScreen summary={summary} />;
-    if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} summary={summary} reload={loadSummary} authInfo={authInfo} />;
+    if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} persistSettings={persistDashboardSettings} summary={summary} reload={loadSummary} authInfo={authInfo} />;
     return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} productionTypes={productionTypes} productionLoading={productionLoading} />;
   }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo, productionTypes, productionLoading, stopListData, stopListLoading]);
 
