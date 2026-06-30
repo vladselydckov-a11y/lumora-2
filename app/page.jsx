@@ -36,7 +36,7 @@ const TABS = [
   { id: 'today', label: 'Сегодня' },
   { id: 'reports', label: 'Отчёты' },
   { id: 'waiters', label: 'Официанты' },
-  { id: 'ai', label: 'Lumora AI' },
+  { id: 'ai', label: 'КЛИК AI' },
   { id: 'analytics', label: 'AI-аналитика' },
   { id: 'plan', label: 'План' },
   { id: 'risks', label: 'Риски' },
@@ -302,7 +302,7 @@ function StatCard({ item, trend }) {
   );
 }
 
-function EmptyState({ title = 'Данных пока нет', text = 'Lumora ждёт первые чеки из iiko. Старые блюда и официанты не подмешиваются.' }) {
+function EmptyState({ title = 'Данных пока нет', text = 'КЛИК ждёт первые чеки из iiko. Старые блюда и официанты не подмешиваются.' }) {
   return (
     <div className="empty-state">
       <div className="empty-star">✦</div>
@@ -321,21 +321,21 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
 
   if (!peaks.length && !weakHours.length) {
     return (
-      <Section title="Почасовая аналитика" subtitle="пики и слабые часы продаж">
-        <EmptyState title="Почасовки пока нет" text="После загрузки hourly_sales Lumora покажет пики, слабые часы и рекомендации по смене." />
+      <Section title="Выручка по часам" subtitle="когда продаётся больше всего">
+        <EmptyState title="Почасовки пока нет" text="После загрузки hourly_sales КЛИК покажет пики, слабые часы и рекомендации по смене." />
       </Section>
     );
   }
 
   return (
     <>
-      <Section title="Пики продаж по часам" subtitle="когда ресторан зарабатывает больше всего">
+      <Section title="Выручка по часам" subtitle="когда продаётся больше всего">
         <div className="forecast-grid">
           <div><span>Лучший час</span><b>{bestHour?.label || '—'}</b><p>{bestHour?.revenueText || '—'}</p></div>
           <div><span>Обед</span><b>{analytics.lunchRevenueText || '—'}</b><p>{analytics.lunchShare || 0}% выручки</p></div>
           <div><span>Вечер</span><b>{analytics.eveningRevenueText || '—'}</b><p>{analytics.eveningShare || 0}% выручки</p></div>
         </div>
-        <p className="soft-text">{analytics.insight || 'Lumora анализирует распределение выручки по часам.'}</p>
+        <p className="soft-text">{analytics.insight || 'КЛИК анализирует распределение выручки по часам.'}</p>
         <div className="event-list">
           {peaks.slice(0, compact ? 3 : 5).map((item) => (
             <div className="channel-row" key={`peak-${item.hour}`}>
@@ -373,7 +373,7 @@ function NetworkPointsBlock({ summary, compact = false }) {
   if (!visibleRestaurants.length) {
     return (
       <Section title="Точки сети" subtitle="выручка по отдельным ресторанам">
-        <EmptyState title="Данных по точкам пока нет" text="После загрузки daily_sales Lumora покажет выручку и долю каждой точки." />
+        <EmptyState title="Данных по точкам пока нет" text="После загрузки daily_sales КЛИК покажет выручку и долю каждой точки." />
       </Section>
     );
   }
@@ -430,7 +430,7 @@ function DiscountAnalyticsBlock({ summary, compact = false }) {
   if (!channels.length && !days.length) {
     return (
       <Section title="Скидки и бонусы" subtitle="скидки, списания и бонусная система">
-        <EmptyState title="Скидок пока нет" text="После загрузки channel_sales Lumora покажет скидки, бонусы и заказы с картой." />
+        <EmptyState title="Скидок пока нет" text="После загрузки channel_sales КЛИК покажет скидки, бонусы и заказы с картой." />
       </Section>
     );
   }
@@ -526,7 +526,7 @@ function buildOwnerReport(summary) {
   const periodTitleText = summary?.period?.title || 'выбранный период';
 
   const lines = [
-    `Отчёт владельцу Lumora`,
+    `Отчёт владельцу КЛИК`,
     `${periodTitleText}`,
     ``,
     `1. Выручка: ${money(revenue)}. План: ${money(plan)}, выполнение ${planPercent}%.`,
@@ -576,7 +576,7 @@ function OwnerReportBlock({ summary, compact = false }) {
         <div><span>Скидки</span><b>{discount.percentText || metric(summary, 'discounts')?.delta || '0%'}</b><p>{worstDay ? `проверить ${worstDay.label}` : 'контроль нормы'}</p></div>
       </div>
       <div className="ai-note">
-        <b>{summary?.ai?.summary || 'Lumora сформирует отчёт после загрузки данных.'}</b>
+        <b>{summary?.ai?.summary || 'КЛИК сформирует отчёт после загрузки данных.'}</b>
         {!compact ? <pre className="soft-text" style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>{report}</pre> : <p>{summary?.forecast?.recommendations?.[0] || 'Проверьте план-факт, скидки и пики продаж.'}</p>}
       </div>
     </Section>
@@ -618,52 +618,9 @@ function ExecutiveFocusBlock({ summary, settings, setTab }) {
       </div>
       <div className="quick-grid">
         <button onClick={() => setTab('risks')}>Проверить риски</button>
-        <button onClick={() => setTab('ai')}>Спросить Lumora AI</button>
+        <button onClick={() => setTab('ai')}>Спросить КЛИК AI</button>
         <button onClick={() => setTab('reports')}>Открыть отчёты</button>
       </div>
-    </Section>
-  );
-}
-
-function buildExportPack(summary) {
-  const blocks = [
-    buildOwnerReport(summary),
-    '',
-    'Скрипт для команды:',
-    summary?.teamScript || 'Скрипт появится после данных.',
-    '',
-    buildRiskReport(summary)
-  ];
-
-  if (summary?.ai?.recommendations?.length) {
-    blocks.push('', 'Рекомендации Lumora:', ...summary.ai.recommendations.slice(0, 6).map((item, index) => `${index + 1}. ${item}`));
-  }
-
-  return blocks.filter(Boolean).join('\n');
-}
-
-function ExportPackBlock({ summary }) {
-  const [copied, setCopied] = useState(false);
-  const pack = buildExportPack(summary);
-
-  async function copyPack() {
-    try {
-      await navigator.clipboard.writeText(pack);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <Section title="Пакет для владельца" subtitle="отчёт + риски + скрипт в один текст" action={<button onClick={copyPack}>{copied ? 'Скопировано' : 'Скопировать всё'}</button>}>
-      <div className="forecast-grid">
-        <div><span>Отчёт</span><b>готов</b><p>цифры и выводы</p></div>
-        <div><span>Риски</span><b>{riskScoreValue(summary)}/100</b><p>индекс контроля</p></div>
-        <div><span>Команда</span><b>скрипт</b><p>для рабочего чата</p></div>
-      </div>
-      <p className="soft-text">Один текст можно отправить владельцу, управляющему или в рабочий чат. Без технички, только управленческая выжимка.</p>
     </Section>
   );
 }
@@ -675,7 +632,7 @@ function MenuStrategyBlock({ summary }) {
   const topCategory = summary?.categories?.[0];
   const discount = summary?.discountAnalytics || {};
   const text = [
-    'Меню-фокус Lumora',
+    'Меню-фокус КЛИК',
     summary?.period?.title || 'выбранный период',
     topDish ? `1. Продвигать сильную позицию: ${topDish.name}, выручка ${topDish.revenue}.` : null,
     topCategory ? `2. Главная категория: ${topCategory.name}, выручка ${topCategory.revenueText}.` : null,
@@ -701,7 +658,7 @@ function MenuStrategyBlock({ summary }) {
         <div><span>Категория</span><b>{topCategory?.name || '—'}</b><p>{topCategory?.revenueText || 'нет данных'}</p></div>
         <div><span>Проверить</span><b>{weakDish?.name || '—'}</b><p>{weakDish?.revenue || 'без слабых позиций'}</p></div>
       </div>
-      <p className="soft-text">Lumora показывает, что можно продвигать по выручке. Маржу и фудкост включаем только после подключения себестоимости.</p>
+      <p className="soft-text">КЛИК показывает, что можно продвигать по выручке. Маржу и фудкост включаем только после подключения себестоимости.</p>
     </Section>
   );
 }
@@ -713,7 +670,7 @@ function WaiterShiftScriptBlock({ summary }) {
   const low = waiters.length ? [...waiters].sort((a, b) => Number(a.rawRevenue || 0) - Number(b.rawRevenue || 0))[0] : null;
   const script = summary?.teamScript || 'Скрипт появится после данных.';
   const text = [
-    'Скрипт для смены Lumora',
+    'Скрипт для смены КЛИК',
     summary?.period?.title || 'выбранный период',
     '',
     script,
@@ -815,8 +772,6 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
         <p className="soft-text">{summary?.forecast?.risk || 'Прогноз появится после первых продаж.'}</p>
       </Section>
 
-      <HourlyAnalyticsBlock summary={summary} compact />
-
       <NetworkPointsBlock summary={summary} compact />
 
       <Section title="Топ-10 категорий по выручке" subtitle="что приносит основную кассу">
@@ -830,22 +785,11 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
 
       <DiscountAnalyticsBlock summary={summary} compact />
 
-      <Section title="Главные события дня" subtitle="что было хорошо и что требует внимания">
-        {summary?.moments?.length ? (
-          <div className="event-list">
-            {summary.moments.slice(0, 5).map((item, index) => (
-              <div className={`event-row ${toneClass(item.level)}`} key={`${item.title}-${index}`}>
-                <span>{item.level === 'good' ? '✓' : item.level === 'bad' ? '!' : '•'}</span>
-                <div><b>{item.title}</b><p>{item.text}</p></div>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState title="Событий пока нет" text="После первых чеков Lumora покажет пики, просадки и важные сигналы." />}
-      </Section>
+      <HourlyAnalyticsBlock summary={summary} compact />
 
-      <Section title="Lumora-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
+      <Section title="КЛИК-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
         <div className="ai-note">
-          <b>{summary?.ai?.summary || 'Lumora ждёт данные.'}</b>
+          <b>{summary?.ai?.summary || 'КЛИК ждёт данные.'}</b>
           <p>{summary?.ai?.recommendations?.[0] || 'После обновления iiko появятся рекомендации.'}</p>
         </div>
       </Section>
@@ -873,8 +817,6 @@ function ReportsScreen({ summary, period, setPeriod }) {
       </Section>
 
       <OwnerReportBlock summary={summary} />
-
-      <ExportPackBlock summary={summary} />
 
       <HourlyAnalyticsBlock summary={summary} />
 
@@ -939,7 +881,7 @@ function WaitersScreen({ summary, period, setPeriod }) {
           </div>
         )) : <EmptyState title="Официантов за период нет" text="Данные появятся после загрузки продаж за выбранную дату." />}
       </Section>
-      <Section title="Совет Lumora команде" subtitle="что усилить для роста выручки">
+      <Section title="Совет КЛИК команде" subtitle="что усилить для роста выручки">
         <div className="ai-note"><b>{summary?.teamScript || 'Скрипт появится после данных.'}</b></div>
       </Section>
     </div>
@@ -980,9 +922,9 @@ function AiScreen({ summary, restaurantId, period, date }) {
         body: JSON.stringify({ restaurant_id: restaurantId, question: q, period, date, history: next.slice(-6) })
       });
       const data = await response.json();
-      persist([...next, { role: 'Lumora', text: data.answer || 'Не удалось получить ответ.', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }]);
+      persist([...next, { role: 'КЛИК', text: data.answer || 'Не удалось получить ответ.', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }]);
     } catch {
-      persist([...next, { role: 'Lumora', text: 'Не удалось подключиться к AI. Проверь OPENAI_API_KEY или попробуй позже.', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }]);
+      persist([...next, { role: 'КЛИК', text: 'Не удалось подключиться к AI. Проверь OPENAI_API_KEY или попробуй позже.', time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }]);
     } finally {
       setLoading(false);
     }
@@ -990,7 +932,7 @@ function AiScreen({ summary, restaurantId, period, date }) {
 
   return (
     <div className="screen-stack ai-screen">
-      <Section title="Lumora AI" subtitle="задавайте вопросы по данным ресторана">
+      <Section title="КЛИК AI" subtitle="задавайте вопросы по данным ресторана">
         <div className="quick-grid">{QUICK_QUESTIONS.map((item) => <button key={item} onClick={() => ask(item)}>{item}</button>)}</div>
       </Section>
 
@@ -1001,13 +943,13 @@ function AiScreen({ summary, restaurantId, period, date }) {
             <p>{msg.text}</p>
           </div>
         )) : (
-          <div className="message assistant"><span>Lumora</span><p>{summary?.ai?.summary || 'Спросите Lumora, где ресторан теряет деньги и что сделать сегодня.'}</p></div>
+          <div className="message assistant"><span>КЛИК</span><p>{summary?.ai?.summary || 'Спросите КЛИК, где ресторан теряет деньги и что сделать сегодня.'}</p></div>
         )}
-        {loading ? <div className="message assistant"><span>Lumora</span><p>Анализирую данные…</p></div> : null}
+        {loading ? <div className="message assistant"><span>КЛИК</span><p>Анализирую данные…</p></div> : null}
       </div>
 
       <div className="chat-input">
-        <input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Задайте вопрос Lumora…" onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} />
+        <input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Задайте вопрос КЛИК…" onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} />
         <button onClick={() => ask()}>➤</button>
       </div>
     </div>
@@ -1018,13 +960,13 @@ function AnalyticsScreen({ summary }) {
   const recommendations = summary?.ai?.recommendations || [];
   return (
     <div className="screen-stack">
-      <Section title="AI-аналитика" subtitle="готовые выводы Lumora">
+      <Section title="AI-аналитика" subtitle="готовые выводы КЛИК">
         <div className="ai-note big"><b>{summary?.ai?.summary}</b></div>
         {recommendations.map((text, index) => (
           <div className="insight-row" key={text}><span>{index + 1}</span><p>{text}</p></div>
         ))}
       </Section>
-      <Section title="Где теряем деньги" subtitle="оценка по правилам Lumora">
+      <Section title="Где теряем деньги" subtitle="оценка по правилам КЛИК">
         {(summary?.moneyLosses || []).map((item) => <RiskLine item={item} key={item.title} />)}
       </Section>
     </div>
@@ -1052,7 +994,7 @@ function buildWeeklyPlanText(summary, settings) {
   const forecast = summary?.forecast || {};
 
   const lines = [
-    'План Lumora',
+    'План КЛИК',
     periodTitleText,
     '',
     `Цель: довести выручку до ${money(plan)}. Сейчас: ${money(revenue)}, выполнение ${percent}%.`,
@@ -1075,7 +1017,7 @@ function buildWeeklyPlanText(summary, settings) {
   ];
 
   if (forecast.recommendations?.length) {
-    lines.push('', 'Рекомендации Lumora:', ...forecast.recommendations.slice(0, 5).map((item) => `- ${item}`));
+    lines.push('', 'Рекомендации КЛИК:', ...forecast.recommendations.slice(0, 5).map((item) => `- ${item}`));
   }
 
   return lines.filter(Boolean).join('\n');
@@ -1142,7 +1084,7 @@ function PlanScreen({ summary, settings }) {
         </div>
         <div className="forecast-grid">
           <div><span>Сейчас</span><b>{money(revenue)}</b><p>факт периода</p></div>
-          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка Lumora'}</p></div>
+          <div><span>Прогноз</span><b>{money(summary?.forecast?.projected || 0)}</b><p>{summary?.forecast?.risk || 'оценка КЛИК'}</p></div>
           <div><span>Уверенность</span><b>{summary?.forecast?.confidence || 0}%</b><p>по доступным данным</p></div>
         </div>
       </Section>
@@ -1204,7 +1146,7 @@ function buildRiskReport(summary) {
   const periodTitleText = summary?.period?.title || 'выбранный период';
 
   const lines = [
-    'Риски Lumora',
+    'Риски КЛИК',
     periodTitleText,
     '',
     `Индекс риска: ${score}/100. Уровень: ${level.title}.`,
@@ -1257,14 +1199,14 @@ function RiskDashboardBlock({ summary }) {
           <div><span>Уровень</span><b>{level.title}</b><p>{mainRisk?.title || 'без критики'}</p></div>
           <div><span>Проверить</span><b>{worstChannel?.name || worstDay?.label || 'План-факт'}</b><p>{worstDay ? `${worstDay.percentText} скидок` : 'контроль периода'}</p></div>
         </div>
-        <p className="soft-text">Lumora учитывает план-факт, скидки, сигналы, фудкост и качество данных. Индекс нужен как быстрый ориентир, а не как бухгалтерский расчёт.</p>
+        <p className="soft-text">КЛИК учитывает план-факт, скидки, сигналы, фудкост и качество данных. Индекс нужен как быстрый ориентир, а не как бухгалтерский расчёт.</p>
       </Section>
 
       <Section title="Главные риски" subtitle="что выше нормы или требует контроля">
         {risks.length ? risks.map((item, index) => <RiskLine item={item} key={`${item.title}-${index}`} />) : <EmptyState title="Рисков пока нет" />}
       </Section>
 
-      <Section title="Сигналы Lumora" subtitle="короткие уведомления по периоду">
+      <Section title="Сигналы КЛИК" subtitle="короткие уведомления по периоду">
         {alerts.length ? alerts.map((item, index) => <div className={`event-row ${toneClass(item.level)}`} key={index}><span>⌁</span><div><b>{item.title}</b><p>{item.text}</p></div></div>) : <EmptyState title="Сигналов пока нет" />}
       </Section>
 
@@ -1465,7 +1407,7 @@ const SECTION_PERMISSION_OPTIONS = [
   { id: 'today', label: 'Сегодня' },
   { id: 'reports', label: 'Отчёты' },
   { id: 'waiters', label: 'Официанты' },
-  { id: 'ai', label: 'Lumora AI' },
+  { id: 'ai', label: 'КЛИК AI' },
   { id: 'analytics', label: 'AI-аналитика' },
   { id: 'plan', label: 'План' },
   { id: 'risks', label: 'Риски' },
@@ -3289,7 +3231,7 @@ function ControlScreen({ settings, setSettings, summary, reload, authInfo }) {
             <div className="mini-grid">
               <div className="mini-card"><small>Mini App</small><b>защищён</b><p>проверка по Telegram</p></div>
               <div className="mini-card"><small>Рестораны</small><b>по доступу</b><p>чужая точка не отдаётся</p></div>
-              <div className="mini-card"><small>AI</small><b>по роли</b><p>Lumora AI проверяет права</p></div>
+              <div className="mini-card"><small>AI</small><b>по роли</b><p>КЛИК AI проверяет права</p></div>
             </div>
           </Section>
 
@@ -3318,7 +3260,7 @@ function NotificationsModal({ summary, close }) {
   return (
     <div className="modal-backdrop" onClick={close}>
       <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-head"><h2>Сигналы Lumora</h2><button onClick={close}>×</button></div>
+        <div className="modal-head"><h2>Сигналы КЛИК</h2><button onClick={close}>×</button></div>
         {(summary?.alerts || []).length ? summary.alerts.map((item, index) => (
           <div className={`event-row ${toneClass(item.level)}`} key={index}><span>⌁</span><div><b>{item.title}</b><p>{item.text}</p></div></div>
         )) : <EmptyState title="Сигналов пока нет" />}
