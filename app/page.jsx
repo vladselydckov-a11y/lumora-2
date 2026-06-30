@@ -927,6 +927,62 @@ function MenuAbcBlock({ summary }) {
   );
 }
 
+function StopListBlock({ stopListData, loading = false }) {
+  const items = Array.isArray(stopListData?.items) ? stopListData.items : [];
+  const activeItems = items.filter((item) => item.status !== 'resolved');
+  const totalLoss = Number(stopListData?.totalLoss || 0);
+  const criticalCount = activeItems.filter((item) => item.level === 'bad' || Number(item.estimatedLoss || 0) >= 5000).length;
+
+  if (loading && !items.length) {
+    return (
+      <Section title="Стоп-лист" subtitle="КЛИК проверяет реальные данные по отсутствующим позициям" className="stop-list-panel">
+        <EmptyState title="Проверяем стоп-лист" text="Если iiko отдаёт стоп-позиции, они появятся здесь без ручных догадок." />
+      </Section>
+    );
+  }
+
+  if (!items.length) {
+    return (
+      <Section title="Стоп-лист" subtitle="что сейчас не продаётся и сколько может теряться" className="stop-list-panel">
+        <div className="stop-summary good">
+          <span>✓</span>
+          <div>
+            <b>Активного стоп-листа нет</b>
+            <p>Критичных позиций по данным stop_list_items не найдено. Если стоп-лист ведётся в iiko, подключи n8n-ветку из Pack 6.</p>
+          </div>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Стоп-лист" subtitle="отсутствующие позиции и примерная потеря выручки" className="stop-list-panel">
+      <div className="stop-summary danger">
+        <span>🔥</span>
+        <div>
+          <b>Сейчас нет в наличии: {activeItems.length}</b>
+          <p>Потери ≈ {stopListData?.totalLossText || money(totalLoss)} · критичных позиций: {criticalCount}</p>
+        </div>
+      </div>
+
+      <div className="stop-list-items">
+        {activeItems.slice(0, 8).map((item, index) => (
+          <div className={`stop-row ${item.level || 'warn'}`} key={item.id || `${item.itemName}-${index}`}>
+            <div>
+              <small>{item.category || 'Меню'} · {item.startedAtText || item.businessDate || 'сегодня'}</small>
+              <b>{item.itemName || item.name}</b>
+              <p>{item.reason || item.durationText || 'Позиция сейчас недоступна для продажи.'}</p>
+            </div>
+            <strong>{item.estimatedLossText || money(item.estimatedLoss || 0)}</strong>
+          </div>
+        ))}
+      </div>
+
+      <p className="soft-text">Источник: таблица stop_list_items. КЛИК показывает этот блок только по реальным строкам из iiko/n8n или ручного ввода, без выдуманных стоп-позиций.</p>
+    </Section>
+  );
+}
+
 function WaiterShiftScriptBlock({ summary }) {
   const [copied, setCopied] = useState(false);
   const waiters = summary?.waiters || [];
@@ -1069,7 +1125,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod, productionT
   );
 }
 
-function ReportsScreen({ summary, period, setPeriod }) {
+function ReportsScreen({ summary, period, setPeriod, stopListData, stopListLoading }) {
   const channels = summary?.salesChannels || [];
   const top = summary?.topDishes || [];
   const low = summary?.lowDishes || [];
@@ -1115,6 +1171,8 @@ function ReportsScreen({ summary, period, setPeriod }) {
       </Section>
 
       <MenuAbcBlock summary={summary} />
+
+      <StopListBlock stopListData={stopListData} loading={stopListLoading} />
 
       <MenuStrategyBlock summary={summary} />
 
@@ -3596,8 +3654,11 @@ export default function Page() {
   const [summaryContext, setSummaryContext] = useState('');
   const summaryRequestRef = useRef(0);
   const productionRequestRef = useRef(0);
+  const stopListRequestRef = useRef(0);
   const [productionTypes, setProductionTypes] = useState([]);
   const [productionLoading, setProductionLoading] = useState(false);
+  const [stopListData, setStopListData] = useState({ items: [] });
+  const [stopListLoading, setStopListLoading] = useState(false);
 
   const sourceRestaurants = authInfo?.restaurants?.length ? authInfo.restaurants : (summary?.network?.restaurants || []);
   const restaurants = filterRestaurantsByAccess(sourceRestaurants, authInfo);
@@ -3629,6 +3690,8 @@ export default function Page() {
       setSummaryContext('');
       setProductionTypes([]);
       setProductionLoading(false);
+      setStopListData({ items: [] });
+      setStopListLoading(false);
       setLoading(false);
       return;
     }
@@ -3638,6 +3701,8 @@ export default function Page() {
       setSummaryContext('');
       setProductionTypes([]);
       setProductionLoading(true);
+      setStopListData({ items: [] });
+      setStopListLoading(true);
       setLoading(true);
       setRestaurantId(safeRestaurantId);
       return;
@@ -3681,6 +3746,8 @@ export default function Page() {
     if (!authInfo || !safeRestaurantId || shouldBlockDashboard(authInfo, settings) || safeRestaurantId !== restaurantId) {
       setProductionTypes([]);
       setProductionLoading(false);
+      setStopListData({ items: [] });
+      setStopListLoading(false);
       return;
     }
 
@@ -3700,6 +3767,33 @@ export default function Page() {
     }
   }
 
+  async function loadStopList(options = {}) {
+    const silent = Boolean(options.silent);
+    const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+
+    if (!authInfo || !safeRestaurantId || shouldBlockDashboard(authInfo, settings) || safeRestaurantId !== restaurantId) {
+      setStopListData({ items: [] });
+      setStopListLoading(false);
+      return;
+    }
+
+    const requestId = stopListRequestRef.current + 1;
+    stopListRequestRef.current = requestId;
+
+    try {
+      if (!silent) setStopListLoading(true);
+      const response = await fetch(`/api/stop-list?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      const data = await response.json();
+      if (stopListRequestRef.current !== requestId) return;
+      setStopListData(data?.ok ? data : { items: [] });
+    } catch {
+      if (stopListRequestRef.current === requestId) setStopListData({ items: [] });
+    } finally {
+      if (stopListRequestRef.current === requestId) setStopListLoading(false);
+    }
+  }
+
+
   useEffect(() => {
     const next = loadSettings();
     setSettings(next);
@@ -3717,6 +3811,8 @@ export default function Page() {
       setSummaryContext('');
       setProductionTypes([]);
       setProductionLoading(true);
+      setStopListData({ items: [] });
+      setStopListLoading(true);
       setLoading(true);
       setRestaurantId(safeRestaurantId);
     }
@@ -3757,10 +3853,17 @@ export default function Page() {
   }, [authInfo, restaurantId, period, date]);
 
   useEffect(() => {
+    if (!authInfo) return;
+    setStopListData({ items: [] });
+    loadStopList({ silent: false });
+  }, [authInfo, restaurantId, period, date]);
+
+  useEffect(() => {
     if (!authInfo || !settings.autoRefresh) return undefined;
     const id = setInterval(() => {
       loadSummary({ silent: true });
       loadProductionTypes({ silent: true });
+      loadStopList({ silent: true });
     }, 30000);
     return () => clearInterval(id);
   }, [authInfo, settings.autoRefresh, restaurantId, period, date, summaryContext]);
@@ -3771,6 +3874,8 @@ export default function Page() {
     setSummaryContext('');
     setProductionTypes([]);
     setProductionLoading(true);
+    setStopListData({ items: [] });
+    setStopListLoading(true);
     setRestaurantId(nextRestaurantId);
     setPeriod('day');
     setTab(nextTab || 'today');
@@ -3782,6 +3887,8 @@ export default function Page() {
     setSummaryContext('');
     setProductionTypes([]);
     setProductionLoading(true);
+    setStopListData({ items: [] });
+    setStopListLoading(true);
     setRestaurantId(nextRestaurantId);
     setLoading(true);
   }
@@ -3791,6 +3898,8 @@ export default function Page() {
     setSummaryContext('');
     setProductionTypes([]);
     setProductionLoading(true);
+    setStopListData({ items: [] });
+    setStopListLoading(true);
     setDate(nextDate);
     setLoading(true);
   }
@@ -3810,7 +3919,7 @@ export default function Page() {
     if (tab === 'platform') return <PlatformAdminBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
     if (tab === 'client') return <ClientBusinessCabinetBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
     if (tab !== 'control' && !canSeeSection(authInfo, tab)) return <NoAccessScreen authInfo={authInfo} />;
-    if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} />;
+    if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} stopListData={stopListData} stopListLoading={stopListLoading} />;
     if (tab === 'waiters') return <WaitersScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'ai') return <AiScreen summary={summary} restaurantId={restaurantId} period={period} date={date} />;
     if (tab === 'analytics') return <AnalyticsScreen summary={summary} />;
@@ -3818,7 +3927,7 @@ export default function Page() {
     if (tab === 'risks') return <RisksScreen summary={summary} />;
     if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} summary={summary} reload={loadSummary} authInfo={authInfo} />;
     return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} productionTypes={productionTypes} productionLoading={productionLoading} />;
-  }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo, productionTypes, productionLoading]);
+  }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo, productionTypes, productionLoading, stopListData, stopListLoading]);
 
   const isOwnerConsole = isPlatformOwnerUser(authInfo) && tab === 'platform';
   const isClientConsole = isBusinessOwnerConsoleUser(authInfo) && tab === 'client';
