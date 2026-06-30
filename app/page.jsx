@@ -364,6 +364,50 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
 }
 
 
+
+function ProductionTypesBlock({ productionTypes = [], loading = false }) {
+  const rows = Array.isArray(productionTypes) ? productionTypes.filter((item) => Number(item?.revenue || 0) > 0) : [];
+  const total = rows.reduce((sum, item) => sum + Number(item?.revenue || 0), 0);
+
+  if (loading && !rows.length) {
+    return (
+      <Section title="Откуда пришла выручка по типу производства" subtitle="реальные данные iiko, без расчёта по догадкам" className="production-panel">
+        <EmptyState title="Загружаем цеха" text="КЛИК проверяет production_sales и не подставляет выдуманные цифры." />
+      </Section>
+    );
+  }
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return (
+    <Section title="Откуда пришла выручка по типу производства" subtitle="кухня, бар, кальян и цеха из iiko" className="production-panel">
+      <div className="production-stack-bar" aria-label="Доля выручки по типу производства">
+        {rows.slice(0, 8).map((item) => {
+          const share = Number(item.share || (total ? (Number(item.revenue || 0) / total) * 100 : 0));
+          return <span key={item.key || item.name} style={{ width: `${Math.max(share, 2)}%` }} title={`${item.name}: ${item.revenueText || money(item.revenue)}`} />;
+        })}
+      </div>
+      <div className="production-list">
+        {rows.slice(0, 8).map((item) => (
+          <div className="production-row" key={item.key || item.name}>
+            <div>
+              <i />
+              <b>{item.name}</b>
+            </div>
+            <div>
+              <strong>{Math.round(Number(item.share || 0))}%</strong>
+              <span>{item.revenueText || money(item.revenue)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="soft-text">Источник: таблица production_sales. Если данных нет, виджет скрывается и не рисует приблизительные цифры.</p>
+    </Section>
+  );
+}
+
 function NetworkPointsBlock({ summary, compact = false }) {
   const restaurants = summary?.network?.restaurants || [];
   const visibleRestaurants = restaurants.filter((item) => Number(item?.revenue || 0) > 0);
@@ -717,7 +761,7 @@ function DataReadinessBlock({ summary }) {
   );
 }
 
-function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
+function TodayScreen({ summary, settings, setTab, period, setPeriod, productionTypes, productionLoading }) {
   const revenue = metricRaw(summary, 'revenue');
   const checks = metricRaw(summary, 'checks');
   const guests = metricRaw(summary, 'guests');
@@ -786,6 +830,8 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod }) {
       <DiscountAnalyticsBlock summary={summary} compact />
 
       <HourlyAnalyticsBlock summary={summary} compact />
+
+      <ProductionTypesBlock productionTypes={productionTypes} loading={productionLoading} />
 
       <Section title="КЛИК-сигнал" subtitle="краткий вывод AI-аналитика" action={<button onClick={() => setTab('ai')}>спросить</button>}>
         <div className="ai-note">
@@ -3283,6 +3329,9 @@ export default function Page() {
   const [initialRouteApplied, setInitialRouteApplied] = useState(false);
   const [summaryContext, setSummaryContext] = useState('');
   const summaryRequestRef = useRef(0);
+  const productionRequestRef = useRef(0);
+  const [productionTypes, setProductionTypes] = useState([]);
+  const [productionLoading, setProductionLoading] = useState(false);
 
   const sourceRestaurants = authInfo?.restaurants?.length ? authInfo.restaurants : (summary?.network?.restaurants || []);
   const restaurants = filterRestaurantsByAccess(sourceRestaurants, authInfo);
@@ -3312,6 +3361,8 @@ export default function Page() {
     if (!safeRestaurantId || shouldBlockDashboard(authInfo, settings)) {
       setSummary(null);
       setSummaryContext('');
+      setProductionTypes([]);
+      setProductionLoading(false);
       setLoading(false);
       return;
     }
@@ -3319,6 +3370,8 @@ export default function Page() {
     if (safeRestaurantId !== restaurantId) {
       setSummary(null);
       setSummaryContext('');
+      setProductionTypes([]);
+      setProductionLoading(true);
       setLoading(true);
       setRestaurantId(safeRestaurantId);
       return;
@@ -3354,6 +3407,33 @@ export default function Page() {
     }
   }
 
+
+  async function loadProductionTypes(options = {}) {
+    const silent = Boolean(options.silent);
+    const safeRestaurantId = getSafeRestaurantIdForAuth(authInfo, restaurantId);
+
+    if (!authInfo || !safeRestaurantId || shouldBlockDashboard(authInfo, settings) || safeRestaurantId !== restaurantId) {
+      setProductionTypes([]);
+      setProductionLoading(false);
+      return;
+    }
+
+    const requestId = productionRequestRef.current + 1;
+    productionRequestRef.current = requestId;
+
+    try {
+      if (!silent) setProductionLoading(true);
+      const response = await fetch(`/api/production-sales?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      const data = await response.json();
+      if (productionRequestRef.current !== requestId) return;
+      setProductionTypes(Array.isArray(data?.productionTypes) ? data.productionTypes : []);
+    } catch {
+      if (productionRequestRef.current === requestId) setProductionTypes([]);
+    } finally {
+      if (productionRequestRef.current === requestId) setProductionLoading(false);
+    }
+  }
+
   useEffect(() => {
     const next = loadSettings();
     setSettings(next);
@@ -3369,6 +3449,8 @@ export default function Page() {
     if (safeRestaurantId && safeRestaurantId !== restaurantId) {
       setSummary(null);
       setSummaryContext('');
+      setProductionTypes([]);
+      setProductionLoading(true);
       setLoading(true);
       setRestaurantId(safeRestaurantId);
     }
@@ -3403,8 +3485,17 @@ export default function Page() {
   }, [authInfo, restaurantId, period, date]);
 
   useEffect(() => {
+    if (!authInfo) return;
+    setProductionTypes([]);
+    loadProductionTypes({ silent: false });
+  }, [authInfo, restaurantId, period, date]);
+
+  useEffect(() => {
     if (!authInfo || !settings.autoRefresh) return undefined;
-    const id = setInterval(() => loadSummary({ silent: true }), 30000);
+    const id = setInterval(() => {
+      loadSummary({ silent: true });
+      loadProductionTypes({ silent: true });
+    }, 30000);
     return () => clearInterval(id);
   }, [authInfo, settings.autoRefresh, restaurantId, period, date, summaryContext]);
 
@@ -3412,6 +3503,8 @@ export default function Page() {
     if (!nextRestaurantId) return;
     setSummary(null);
     setSummaryContext('');
+    setProductionTypes([]);
+    setProductionLoading(true);
     setRestaurantId(nextRestaurantId);
     setPeriod('day');
     setTab(nextTab || 'today');
@@ -3421,6 +3514,8 @@ export default function Page() {
   function changeRestaurant(nextRestaurantId) {
     setSummary(null);
     setSummaryContext('');
+    setProductionTypes([]);
+    setProductionLoading(true);
     setRestaurantId(nextRestaurantId);
     setLoading(true);
   }
@@ -3428,6 +3523,8 @@ export default function Page() {
   function changeDate(nextDate) {
     setSummary(null);
     setSummaryContext('');
+    setProductionTypes([]);
+    setProductionLoading(true);
     setDate(nextDate);
     setLoading(true);
   }
@@ -3454,8 +3551,8 @@ export default function Page() {
     if (tab === 'plan') return <PlanScreen summary={summary} settings={settings} />;
     if (tab === 'risks') return <RisksScreen summary={summary} />;
     if (tab === 'control') return <ControlScreen settings={settings} setSettings={setSettings} summary={summary} reload={loadSummary} authInfo={authInfo} />;
-    return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} />;
-  }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo]);
+    return <TodayScreen summary={summary} settings={settings} setTab={setTab} period={period} setPeriod={setPeriod} productionTypes={productionTypes} productionLoading={productionLoading} />;
+  }, [tab, summary, loading, error, period, settings, restaurantId, date, authInfo, productionTypes, productionLoading]);
 
   const isOwnerConsole = isPlatformOwnerUser(authInfo) && tab === 'platform';
   const isClientConsole = isBusinessOwnerConsoleUser(authInfo) && tab === 'client';
