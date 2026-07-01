@@ -125,6 +125,27 @@ function getBusinessDate() {
   return getLocalDate();
 }
 
+
+function shiftIsoDate(dateString, days) {
+  const value = String(dateString || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || getBusinessDate();
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getQueryDateForPeriod(selectedDate, selectedPeriod) {
+  const value = String(selectedDate || getBusinessDate()).slice(0, 10);
+
+  // В интерфейсе месяц часто выбран как диапазон 1 число месяца -> 1 число следующего месяца.
+  // Для API это должен быть закрытый период: 1 июня -> 30 июня, иначе в месяц подмешивается 1 июля.
+  if (selectedPeriod === 'month' && /^\d{4}-\d{2}-01$/.test(value)) {
+    return shiftIsoDate(value, -1);
+  }
+
+  return value;
+}
+
 function formatBusinessTime(value) {
   if (!value) return '—';
   try {
@@ -3762,7 +3783,8 @@ export default function Page() {
       return;
     }
 
-    const nextContext = `${safeRestaurantId}:${period}:${date}`;
+    const requestDate = getQueryDateForPeriod(date, period);
+    const nextContext = `${safeRestaurantId}:${period}:${requestDate}`;
     const requestId = summaryRequestRef.current + 1;
     summaryRequestRef.current = requestId;
 
@@ -3772,7 +3794,7 @@ export default function Page() {
         setSummary(null);
         setLoading(true);
       }
-      const response = await fetch(`/api/summary?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      const response = await fetch(`/api/summary?restaurant_id=${safeRestaurantId}&period=${period}&date=${requestDate}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
       const data = await response.json();
       if (summaryRequestRef.current !== requestId) return;
       if (!isSummaryAllowedForAuth(data, authInfo)) {
@@ -3810,7 +3832,8 @@ export default function Page() {
 
     try {
       if (!silent) setProductionLoading(true);
-      const response = await fetch(`/api/production-sales?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      const requestDate = getQueryDateForPeriod(date, period);
+      const response = await fetch(`/api/production-sales?restaurant_id=${safeRestaurantId}&period=${period}&date=${requestDate}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
       const data = await response.json();
       if (productionRequestRef.current !== requestId) return;
       setProductionTypes(Array.isArray(data?.productionTypes) ? data.productionTypes : []);
@@ -3836,7 +3859,8 @@ export default function Page() {
 
     try {
       if (!silent) setStopListLoading(true);
-      const response = await fetch(`/api/stop-list?restaurant_id=${safeRestaurantId}&period=${period}&date=${date}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
+      const requestDate = getQueryDateForPeriod(date, period);
+      const response = await fetch(`/api/stop-list?restaurant_id=${safeRestaurantId}&period=${period}&date=${requestDate}&t=${Date.now()}`, { cache: 'no-store', headers: telegramAuthHeaders() });
       const data = await response.json();
       if (stopListRequestRef.current !== requestId) return;
       setStopListData(data?.ok ? data : { items: [] });
