@@ -46,11 +46,19 @@ function getBusinessDate() {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+function normalizeRequestedDate(date, period) {
+  const selectedDate = String(date || getBusinessDate()).slice(0, 10);
+  if (period === 'month' && /^\d{4}-\d{2}-01$/.test(selectedDate)) {
+    return addDays(selectedDate, -1);
+  }
+  return selectedDate;
+}
+
 function getPeriodRange(date, period) {
-  const selectedDate = date || getBusinessDate();
+  const selectedDate = normalizeRequestedDate(date, period);
   if (period === 'week') {
     const startDate = weekStartMonday(selectedDate);
-    return { startDate, endDate: addDays(startDate, 6) };
+    return { startDate, endDate: selectedDate };
   }
   if (period === 'month') {
     return { startDate: monthStart(selectedDate), endDate: selectedDate };
@@ -59,12 +67,34 @@ function getPeriodRange(date, period) {
 }
 
 function normalizeProductionKey(row) {
+  const rawKey = String(row?.production_key || '').toLowerCase().trim();
+  const rawName = String(row?.production_name || row?.source_label || '').toLowerCase().trim();
+  const text = `${rawKey} ${rawName}`;
+
+  if (text.includes('cold') || text.includes('холод')) return 'cold';
+  if (text.includes('hot') || text.includes('горяч')) return 'hot';
+  if (text.includes('hookah') || text.includes('кальян')) return 'hookah';
+  if (text.includes('kitchen') || text.includes('кухн')) return 'kitchen';
+  if (text.includes('bar') || text.includes('бар') || text.includes('б/а') || text.includes('алког')) return 'bar';
+
   const key = String(row?.production_key || row?.production_name || 'other')
     .toLowerCase()
     .trim()
     .replace(/[^a-zа-яё0-9]+/gi, '_')
     .replace(/^_+|_+$/g, '');
   return key || 'other';
+}
+
+function productionNameForKey(key, fallback) {
+  const map = {
+    cold: 'Холодный цех',
+    hot: 'Горячий цех',
+    bar: 'Бар',
+    hookah: 'Кальян',
+    kitchen: 'Кухня',
+    other: 'Другое'
+  };
+  return map[key] || fallback || key;
 }
 
 function aggregateProductionRows(rows) {
@@ -75,7 +105,7 @@ function aggregateProductionRows(rows) {
     if (revenue <= 0) continue;
 
     const key = normalizeProductionKey(row);
-    const name = row?.production_name || row?.source_label || key;
+    const name = productionNameForKey(key, row?.production_name || row?.source_label || key);
 
     if (!grouped.has(key)) {
       grouped.set(key, {
@@ -91,7 +121,7 @@ function aggregateProductionRows(rows) {
     }
 
     const current = grouped.get(key);
-    current.name = name || current.name;
+    current.name = productionNameForKey(key, name || current.name);
     current.revenue += revenue;
     current.grossRevenue += toNumber(row?.gross_revenue);
     current.discountSum += toNumber(row?.discount_sum);
