@@ -1130,7 +1130,7 @@ function TodayScreen({ summary, settings, setTab, period, setPeriod, productionT
   );
 }
 
-function ReportsScreen({ summary, period, setPeriod, stopListData, stopListLoading }) {
+function ReportsScreen({ summary, period, setPeriod, productionTypes, productionLoading, stopListData, stopListLoading }) {
   const channels = summary?.salesChannels || [];
   const top = summary?.topDishes || [];
   const low = summary?.lowDishes || [];
@@ -1149,9 +1149,9 @@ function ReportsScreen({ summary, period, setPeriod, stopListData, stopListLoadi
         ) : <EmptyState />}
       </Section>
 
-      <OwnerReportBlock summary={summary} />
-
       <HourlyAnalyticsBlock summary={summary} />
+
+      {Array.isArray(productionTypes) && productionTypes.length ? <ProductionTypesBlock productionTypes={productionTypes} loading={productionLoading} /> : null}
 
       <Section title="Источники выручки" subtitle="зал, доставка, самовывоз">
         {channels.length ? channels.map((item) => (
@@ -3978,7 +3978,7 @@ export default function Page() {
     if (tab === 'platform') return <PlatformAdminBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
     if (tab === 'client') return <ClientBusinessCabinetBlock authInfo={authInfo} openRestaurantDashboard={openRestaurantDashboard} />;
     if (tab !== 'control' && !canSeeSection(authInfo, tab)) return <NoAccessScreen authInfo={authInfo} />;
-    if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} stopListData={stopListData} stopListLoading={stopListLoading} />;
+    if (tab === 'reports') return <ReportsScreen summary={summary} period={period} setPeriod={setPeriod} productionTypes={productionTypes} productionLoading={productionLoading} stopListData={stopListData} stopListLoading={stopListLoading} />;
     if (tab === 'waiters') return <WaitersScreen summary={summary} period={period} setPeriod={setPeriod} />;
     if (tab === 'ai') return <AiScreen summary={summary} restaurantId={restaurantId} period={period} date={date} />;
     if (tab === 'analytics') return <AnalyticsScreen summary={summary} />;
