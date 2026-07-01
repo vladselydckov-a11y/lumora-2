@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseSummary } from '../../../lib/supabaseServer';
-import { assertApiAccess } from '../../../lib/saasAccessGuard';
 
 function formatMoney(value) {
   return `${Math.round(Number(value || 0)).toLocaleString('ru-RU')} ₽`;
@@ -48,7 +47,7 @@ function buildNoDataSummary({ restaurantId, date, period, reason = 'Supabase н�
     moments: [],
     moneyLosses: [{ title, amount: 0, reason, action: 'Проверь ENV в Vercel и таблицы Supabase. Фейковые цифры отключены.', level: 'neutral' }],
     totalLoss: 0,
-    actionPlan: [{ role: 'Lumora', title, text: 'Lumora не подставляет демо-цифры. После подключения Supabase появятся реальные данные.' }],
+    actionPlan: [{ role: 'КЛИК', title, text: 'КЛИК не подставляет демо-цифры. После подключения Supabase появятся реальные данные.' }],
     teamScript: 'Реальные данные пока не получены. Демо-цифры отключены.',
     forecast: { current: 0, plan, projected: 0, risk: title, gap: plan, confidence: 0, recommendations: ['Проверить SUPABASE_URL.', 'Проверить SUPABASE_SERVICE_ROLE_KEY.', 'Проверить USE_SUPABASE=true.'] },
     kpiSettings: [
@@ -68,9 +67,6 @@ export async function GET(request) {
   const restaurantId = searchParams.get('restaurant_id') || 'all';
   const date = searchParams.get('date') || undefined;
   const period = searchParams.get('period') || 'day';
-
-  const guard = await assertApiAccess(request, { restaurantId, section: 'today' });
-  if (!guard.ok) return NextResponse.json(guard.body, { status: guard.status });
 
   if (process.env.USE_SUPABASE === 'true') {
     const realSummary = await getSupabaseSummary({ restaurantId, date, period }).catch((error) => {
