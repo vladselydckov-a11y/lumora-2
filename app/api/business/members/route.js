@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isFreshAuthDate, parseInitData, validateTelegramInitData } from '../../../../lib/telegram';
 import { assertAdminKey, cleanRole, normalizeUsername } from '../../../../lib/accessServer';
 import { supabaseFetch } from '../../../../lib/supabaseServer';
+import { notifyMemberAccessGranted } from '../../../../lib/telegramAccessMessage';
 
 const ALL_SECTIONS = ['today', 'reports', 'waiters', 'ai', 'analytics', 'plan', 'risks', 'control'];
 
@@ -322,8 +323,19 @@ export async function POST(request) {
   const businessId = cleanText(body.business_id || body.businessId);
 
   try {
+    let telegramNotification = null;
+
     if (action === 'add_member' || action === 'update_member') {
-      await addOrUpdateMember(body, gate);
+      const member = await addOrUpdateMember(body, gate);
+      const shouldNotify = action === 'add_member' || body.notify_telegram === true || body.notifyTelegram === true;
+
+      if (shouldNotify) {
+        telegramNotification = await notifyMemberAccessGranted({
+          member,
+          businessId,
+          businessName: body.business_name || body.businessName
+        });
+      }
     } else if (action === 'remove_member') {
       await removeMember(body, gate);
     } else {
@@ -331,7 +343,14 @@ export async function POST(request) {
     }
 
     const payload = await getMembersPayload(businessId);
-    return NextResponse.json({ ok: true, auth_mode: gate.mode, action, business_id: businessId, ...payload });
+    return NextResponse.json({
+      ok: true,
+      auth_mode: gate.mode,
+      action,
+      business_id: businessId,
+      telegramNotification,
+      ...payload
+    });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error.message || 'Business members action failed' }, { status: 400 });
   }
