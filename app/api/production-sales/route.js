@@ -2,19 +2,14 @@ import { NextResponse } from 'next/server';
 import { supabaseFetch } from '../../../lib/supabaseServer';
 
 const DEFAULT_RESTAURANT_ID = 'all';
+const RESTAURANT_IDS = ['aziatok', 'akvatoria'];
 const TYUMEN_TZ = 'Asia/Yekaterinburg';
-const KNOWN_RESTAURANTS = ['aziatok', 'akvatoria'];
-const GOOD_COVERAGE_PERCENT = 85;
 
-const PRODUCTION_ORDER = ['cold', 'hot', 'bar', 'hookah', 'kitchen', 'other'];
-const PRODUCTION_NAMES = {
-  cold: 'Холодный цех',
-  hot: 'Горячий цех',
-  bar: 'Бар',
-  hookah: 'Кальян',
-  kitchen: 'Кухня',
-  other: 'Другое'
-};
+const GOOD_COVERAGE_PERCENT = 85;
+const EMPTY_SOURCE = 'empty';
+const KPI_SOURCE = 'kpi_sales';
+const PRODUCTION_SOURCE = 'production_sales';
+const DISH_SOURCE = 'dish_sales_category_mapping';
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
@@ -27,12 +22,6 @@ function roundMoney(value) {
 
 function formatMoney(value) {
   return `${Math.round(toNumber(value)).toLocaleString('ru-RU')} ₽`;
-}
-
-function compactText(value, maxLength = 90) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
 function dateToUTC(dateString) {
@@ -48,19 +37,20 @@ function addDays(dateString, days) {
 function weekStartMonday(dateString) {
   const date = dateToUTC(dateString);
   const day = date.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  date.setUTCDate(date.getUTCDate() - diff);
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setUTCDate(date.getUTCDate() + diff);
   return date.toISOString().slice(0, 10);
 }
 
 function monthStart(dateString) {
-  return `${dateString.slice(0, 8)}01`;
+  const date = dateToUTC(dateString);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
 function monthEnd(dateString) {
-  const year = Number(dateString.slice(0, 4));
-  const month = Number(dateString.slice(5, 7));
-  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const date = dateToUTC(dateString);
+  const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+  return end.toISOString().slice(0, 10);
 }
 
 function getTyumenDate() {
@@ -75,521 +65,680 @@ function getTyumenDate() {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-function getRange(period, selectedDate) {
-  const date = selectedDate || getTyumenDate();
-
-  if (period === 'month') {
-    return {
-      startDate: monthStart(date),
-      endDate: monthEnd(date)
-    };
-  }
+function resolvePeriod({ period, date }) {
+  const selectedDate = date || getTyumenDate();
 
   if (period === 'week') {
-    const startDate = weekStartMonday(date);
+    const startDate = weekStartMonday(selectedDate);
     return {
+      period: 'week',
+      date: selectedDate,
       startDate,
       endDate: addDays(startDate, 6)
     };
   }
 
+  if (period === 'month') {
+    return {
+      period: 'month',
+      date: selectedDate,
+      startDate: monthStart(selectedDate),
+      endDate: monthEnd(selectedDate)
+    };
+  }
+
   return {
-    startDate: date,
-    endDate: date
+    period: 'day',
+    date: selectedDate,
+    startDate: selectedDate,
+    endDate: selectedDate
   };
 }
 
-function restaurantFilter(selectedRestaurantId, field = 'restaurant_id') {
-  if (!selectedRestaurantId || selectedRestaurantId === 'all') {
-    return `&${field}=in.(${KNOWN_RESTAURANTS.join(',')})`;
-  }
-
-  return `&${field}=eq.${encodeURIComponent(selectedRestaurantId)}`;
+function enc(value) {
+  return encodeURIComponent(String(value ?? ''));
 }
 
-function kpiRestaurantFilter(selectedRestaurantId) {
-  if (!selectedRestaurantId || selectedRestaurantId === 'all') {
-    return '&restaurant_id=eq.all';
-  }
-
-  return `&restaurant_id=eq.${encodeURIComponent(selectedRestaurantId)}`;
+function unique(values = []) {
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 }
 
-async function fetchAll(path, pageSize = 1000) {
-  const result = [];
-  let offset = 0;
+function shortLabel(value, max = 92) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
 
-  while (true) {
-    const separator = path.includes('?') ? '&' : '?';
-    const rows = await supabaseFetch(`${path}${separator}limit=${pageSize}&offset=${offset}`);
-    const list = Array.isArray(rows) ? rows : [];
+function normalizeRestaurantId(value) {
+  const restaurantId = String(value || DEFAULT_RESTAURANT_ID).trim().toLowerCase();
+  if (restaurantId === 'all' || RESTAURANT_IDS.includes(restaurantId)) return restaurantId;
+  return DEFAULT_RESTAURANT_ID;
+}
 
-    result.push(...list);
-
-    if (list.length < pageSize) break;
-
-    offset += pageSize;
-
-    if (offset > 20000) break;
+function restaurantFilterQuery(restaurantId) {
+  if (restaurantId === 'all') {
+    return `restaurant_id=in.(${RESTAURANT_IDS.join(',')})`;
   }
 
-  return result;
+  return `restaurant_id=eq.${enc(restaurantId)}`;
+}
+
+function restaurantKpiFilterQuery(restaurantId) {
+  if (restaurantId === 'all') {
+    return 'restaurant_id=eq.all';
+  }
+
+  return `restaurant_id=eq.${enc(restaurantId)}`;
+}
+
+function knownRestaurantsFilterQuery() {
+  return `restaurant_id=in.(${RESTAURANT_IDS.join(',')})`;
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function sumRows(rows, field) {
-  return (Array.isArray(rows) ? rows : []).reduce((total, row) => {
-    return total + toNumber(row?.[field]);
-  }, 0);
+  return safeArray(rows).reduce((sum, row) => sum + toNumber(row?.[field]), 0);
 }
 
-function normalizeKpiRows(rows) {
-  const list = Array.isArray(rows) ? rows : [];
+function makeEmptyKpi() {
+  return {
+    revenue: 0,
+    checks: 0,
+    guests: 0,
+    avgCheck: 0,
+    source: KPI_SOURCE,
+    rows: 0
+  };
+}
 
-  const revenue = roundMoney(sumRows(list, 'revenue'));
-  const checks = Math.round(sumRows(list, 'checks_count') || sumRows(list, 'checks'));
-  const guests = Math.round(sumRows(list, 'guests_count') || sumRows(list, 'guests'));
+async function fetchRows(path) {
+  const rows = await supabaseFetch(path).catch(() => []);
+  return safeArray(rows);
+}
+
+async function fetchKpiRows({ restaurantId, startDate, endDate }) {
+  const base = `/rest/v1/kpi_sales?select=business_date,restaurant_id,revenue,checks_count,guests_count&business_date=gte.${enc(startDate)}&business_date=lte.${enc(endDate)}&order=business_date.asc`;
+
+  if (restaurantId === 'all') {
+    const allRows = await fetchRows(`${base}&${restaurantKpiFilterQuery('all')}`);
+
+    if (allRows.length > 0) {
+      return allRows;
+    }
+
+    return fetchRows(`${base}&${knownRestaurantsFilterQuery()}`);
+  }
+
+  return fetchRows(`${base}&${restaurantKpiFilterQuery(restaurantId)}`);
+}
+
+async function fetchDailyRows({ restaurantId, startDate, endDate }) {
+  const base = `/rest/v1/daily_sales?select=business_date,restaurant_id,revenue,checks_count,guests_count&business_date=gte.${enc(startDate)}&business_date=lte.${enc(endDate)}&order=business_date.asc`;
+
+  if (restaurantId === 'all') {
+    const allRows = await fetchRows(`${base}&restaurant_id=eq.all`);
+
+    if (allRows.length > 0) {
+      return allRows;
+    }
+
+    return fetchRows(`${base}&${knownRestaurantsFilterQuery()}`);
+  }
+
+  return fetchRows(`${base}&restaurant_id=eq.${enc(restaurantId)}`);
+}
+
+function aggregateKpi(rows) {
+  const safeRows = safeArray(rows);
+  const revenue = roundMoney(sumRows(safeRows, 'revenue'));
+  const checks = Math.round(sumRows(safeRows, 'checks_count'));
+  const guests = Math.round(sumRows(safeRows, 'guests_count'));
   const avgCheck = checks > 0 ? Math.round(revenue / checks) : 0;
 
   return {
     revenue,
     checks,
     guests,
-    avgCheck
+    avgCheck,
+    source: KPI_SOURCE,
+    rows: safeRows.length
   };
 }
 
-async function fetchKpiTotal({ selectedRestaurantId, startDate, endDate }) {
-  const select = 'business_date,restaurant_id,revenue,checks_count,guests_count,avg_check';
+async function getKpi({ restaurantId, startDate, endDate }) {
+  const kpiRows = await fetchKpiRows({ restaurantId, startDate, endDate });
+  const kpi = aggregateKpi(kpiRows);
 
-  const directPath = `/rest/v1/kpi_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${kpiRestaurantFilter(selectedRestaurantId)}`;
-  const directRows = await fetchAll(directPath);
-  const direct = normalizeKpiRows(directRows);
+  if (kpi.revenue > 0 || kpi.checks > 0 || kpi.guests > 0) {
+    return kpi;
+  }
 
-  if (direct.revenue > 0 || selectedRestaurantId !== 'all') {
+  const dailyRows = await fetchDailyRows({ restaurantId, startDate, endDate });
+  const daily = aggregateKpi(dailyRows);
+
+  return {
+    ...daily,
+    source: daily.rows > 0 ? 'daily_sales' : KPI_SOURCE
+  };
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().replaceAll('ё', 'е').trim();
+}
+
+function includesAny(text, words) {
+  return words.some((word) => text.includes(word));
+}
+
+function classifyProductionFromDish(row) {
+  const category = normalizeText(row?.category_name);
+  const dish = normalizeText(row?.dish_name);
+  const full = `${category} ${dish}`;
+
+  if (includesAny(full, ['кальян'])) {
+    return { key: 'hookah', name: 'Кальян' };
+  }
+
+  if (
+    includesAny(full, [
+      'алкоголь',
+      'бар ',
+      'бар б/а',
+      'б/а',
+      'напит',
+      'лимонад',
+      'морс',
+      'чай',
+      'кофе',
+      'капучино',
+      'латте',
+      'вода',
+      'сок',
+      'сидр',
+      'вино',
+      'пиво',
+      'коктейл',
+      'аперол',
+      'negroni',
+      'негрони',
+      'cola',
+      'кола'
+    ])
+  ) {
+    return { key: 'bar', name: 'Бар' };
+  }
+
+  if (
+    includesAny(full, [
+      'горяч',
+      'суп',
+      'том-ям',
+      'том ям',
+      'фобо',
+      'удон',
+      'тяхан',
+      'рис ',
+      'лапша',
+      'темпур',
+      'темпура',
+      'запеч',
+      'кранчи',
+      'жарен',
+      'креветки жареные'
+    ])
+  ) {
+    return { key: 'hot', name: 'Горячий цех' };
+  }
+
+  if (
+    includesAny(full, [
+      'ролл',
+      'роллы',
+      'суши',
+      'сашими',
+      'салат',
+      'закуск',
+      'поке',
+      'десерт',
+      'сладкий',
+      'маки',
+      'филадельф',
+      'канада',
+      'лосось',
+      'тунец',
+      'угорь',
+      'креветка'
+    ])
+  ) {
+    return { key: 'cold', name: 'Холодный цех' };
+  }
+
+  if (
+    includesAny(full, [
+      'модификатор',
+      'васаби',
+      'имбир',
+      'соевый',
+      'соус',
+      'допы',
+      'лайм',
+      'лимон',
+      'сироп',
+      'молоко'
+    ])
+  ) {
+    return { key: 'kitchen', name: 'Кухня' };
+  }
+
+  return { key: 'other', name: 'Другое' };
+}
+
+function normalizeProductionName(key, name) {
+  const safeKey = normalizeText(key || name);
+
+  if (safeKey.includes('cold') || safeKey.includes('холод')) return { key: 'cold', name: 'Холодный цех' };
+  if (safeKey.includes('hot') || safeKey.includes('горяч')) return { key: 'hot', name: 'Горячий цех' };
+  if (safeKey.includes('bar') || safeKey.includes('бар')) return { key: 'bar', name: 'Бар' };
+  if (safeKey.includes('hookah') || safeKey.includes('кальян')) return { key: 'hookah', name: 'Кальян' };
+  if (safeKey.includes('kitchen') || safeKey.includes('кухн')) return { key: 'kitchen', name: 'Кухня' };
+  if (safeKey.includes('other') || safeKey.includes('другое')) return { key: 'other', name: 'Другое' };
+
+  return {
+    key: String(key || 'other').trim() || 'other',
+    name: String(name || 'Другое').trim() || 'Другое'
+  };
+}
+
+function bucketPriority(key) {
+  const order = {
+    cold: 1,
+    hot: 2,
+    bar: 3,
+    kitchen: 4,
+    hookah: 5,
+    other: 6
+  };
+
+  return order[key] || 99;
+}
+
+function createBucket({ key, name }) {
+  return {
+    key,
+    name,
+    revenue: 0,
+    grossRevenue: 0,
+    discountSum: 0,
+    checks: 0,
+    guests: 0,
+    rowCount: 0,
+    sourceLabels: []
+  };
+}
+
+function addToBucket(map, production, payload) {
+  const key = production.key;
+  const current = map.get(key) || createBucket(production);
+
+  current.revenue += toNumber(payload.revenue);
+  current.grossRevenue += toNumber(payload.grossRevenue, toNumber(payload.revenue));
+  current.discountSum += toNumber(payload.discountSum);
+  current.checks += toNumber(payload.checks);
+  current.guests += toNumber(payload.guests);
+  current.rowCount += toNumber(payload.rowCount, 1);
+
+  if (payload.label) {
+    current.sourceLabels.push(payload.label);
+  }
+
+  map.set(key, current);
+}
+
+async function fetchProductionRows({ restaurantId, startDate, endDate }) {
+  const path =
+    `/rest/v1/production_sales?select=business_date,restaurant_id,production_key,production_name,source_label,revenue,gross_revenue,discount_sum,checks_count,guests_count` +
+    `&business_date=gte.${enc(startDate)}&business_date=lte.${enc(endDate)}&${restaurantFilterQuery(restaurantId)}&order=business_date.asc`;
+
+  return fetchRows(path);
+}
+
+async function fetchDishRows({ restaurantId, startDate, endDate }) {
+  const path =
+    `/rest/v1/dish_sales?select=business_date,restaurant_id,dish_name,category_name,quantity,revenue,cost,foodcost_percent` +
+    `&business_date=gte.${enc(startDate)}&business_date=lte.${enc(endDate)}&${restaurantFilterQuery(restaurantId)}&order=business_date.asc`;
+
+  return fetchRows(path);
+}
+
+function aggregateProductionRows(rows) {
+  const map = new Map();
+
+  for (const row of safeArray(rows)) {
+    const production = normalizeProductionName(row?.production_key, row?.production_name);
+    const label = [row?.source_label].filter(Boolean).join(' / ');
+
+    addToBucket(map, production, {
+      revenue: row?.revenue,
+      grossRevenue: row?.gross_revenue,
+      discountSum: row?.discount_sum,
+      checks: row?.checks_count,
+      guests: row?.guests_count,
+      rowCount: 1,
+      label
+    });
+  }
+
+  return [...map.values()];
+}
+
+function aggregateDishRows(rows) {
+  const map = new Map();
+
+  for (const row of safeArray(rows)) {
+    const production = classifyProductionFromDish(row);
+    const label = [row?.category_name, row?.dish_name].filter(Boolean).join(' / ');
+
+    addToBucket(map, production, {
+      revenue: row?.revenue,
+      grossRevenue: row?.revenue,
+      discountSum: 0,
+      checks: 0,
+      guests: 0,
+      rowCount: 1,
+      label
+    });
+  }
+
+  return [...map.values()];
+}
+
+function rawTotal(buckets) {
+  return roundMoney(safeArray(buckets).reduce((sum, bucket) => sum + toNumber(bucket?.revenue), 0));
+}
+
+function coveragePercent({ totalRevenue, detailRevenue }) {
+  if (toNumber(totalRevenue) <= 0) return 0;
+  return Math.round((toNumber(detailRevenue) / toNumber(totalRevenue)) * 1000) / 10;
+}
+
+function coverageStatus(percent) {
+  if (percent >= 98 && percent <= 103) return 'perfect';
+  if (percent >= GOOD_COVERAGE_PERCENT && percent <= 115) return 'good';
+  if (percent > 0) return 'partial';
+  return 'empty';
+}
+
+function chooseSource({ kpiRevenue, productionBuckets, dishBuckets }) {
+  const productionRevenue = rawTotal(productionBuckets);
+  const dishRevenue = rawTotal(dishBuckets);
+
+  const productionCoverage = coveragePercent({
+    totalRevenue: kpiRevenue,
+    detailRevenue: productionRevenue
+  });
+
+  const dishCoverage = coveragePercent({
+    totalRevenue: kpiRevenue,
+    detailRevenue: dishRevenue
+  });
+
+  const productionIsGood = productionCoverage >= GOOD_COVERAGE_PERCENT && productionCoverage <= 115;
+  const dishIsGood = dishCoverage >= GOOD_COVERAGE_PERCENT && dishCoverage <= 115;
+
+  if (productionIsGood && productionRevenue >= dishRevenue) {
     return {
-      ...direct,
-      source: 'kpi_sales'
+      source: PRODUCTION_SOURCE,
+      buckets: productionBuckets,
+      rawRevenue: productionRevenue,
+      coverage: productionCoverage
     };
   }
 
-  const fallbackPath = `/rest/v1/kpi_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter('all')}`;
-  const fallbackRows = await fetchAll(fallbackPath);
-  const fallback = normalizeKpiRows(fallbackRows);
+  if (dishIsGood) {
+    return {
+      source: DISH_SOURCE,
+      buckets: dishBuckets,
+      rawRevenue: dishRevenue,
+      coverage: dishCoverage
+    };
+  }
+
+  if (productionRevenue > 0 && productionRevenue >= dishRevenue) {
+    return {
+      source: PRODUCTION_SOURCE,
+      buckets: productionBuckets,
+      rawRevenue: productionRevenue,
+      coverage: productionCoverage
+    };
+  }
+
+  if (dishRevenue > 0) {
+    return {
+      source: DISH_SOURCE,
+      buckets: dishBuckets,
+      rawRevenue: dishRevenue,
+      coverage: dishCoverage
+    };
+  }
 
   return {
-    ...fallback,
-    source: 'kpi_sales_restaurants_sum'
+    source: EMPTY_SOURCE,
+    buckets: [],
+    rawRevenue: 0,
+    coverage: 0
   };
 }
 
-function mapProductionFromLabel(value = '') {
-  const text = String(value || '').toLowerCase();
+function reconcileBuckets({ buckets, kpi, chosen }) {
+  const kpiRevenue = roundMoney(kpi.revenue);
+  const rawRevenue = roundMoney(chosen.rawRevenue);
+  const status = coverageStatus(chosen.coverage);
 
-  if (text.includes('кальян')) return 'hookah';
-
-  if (
-    text.includes('бар б/а') ||
-    text.includes('склад бар') ||
-    text.includes('алкоголь') ||
-    text.includes('коктей') ||
-    text.includes('напит') ||
-    text.includes('лимонад') ||
-    text.includes('вода') ||
-    text.includes('морс') ||
-    text.includes('сок') ||
-    text.includes('сидр') ||
-    text.includes('пиво') ||
-    text.includes('вино') ||
-    text.includes('чай') ||
-    text.includes('кофе') ||
-    text.includes('американо') ||
-    text.includes('капучино') ||
-    text.includes('латте') ||
-    text.includes('бабл') ||
-    text.includes('байкал') ||
-    text.includes('сакура') ||
-    text.includes('lapochka')
-  ) {
-    return 'bar';
+  if (!buckets.length || kpiRevenue <= 0 || rawRevenue <= 0) {
+    return {
+      buckets: [],
+      normalizationFactor: 1,
+      allocatedRevenue: 0,
+      unallocatedRevenue: kpiRevenue,
+      reconciliationMode: 'empty',
+      coverageStatus: status
+    };
   }
 
-  if (
-    text.includes('горяч') ||
-    text.includes('суп') ||
-    text.includes('том-ям') ||
-    text.includes('том ям') ||
-    text.includes('фобо') ||
-    text.includes('удон') ||
-    text.includes('тяхан') ||
-    text.includes('рис') ||
-    text.includes('лапша') ||
-    text.includes('вок') ||
-    text.includes('кацу') ||
-    text.includes('темпур') ||
-    text.includes('запечен') ||
-    text.includes('запечён')
-  ) {
-    return 'hot';
+  const shouldNormalize = chosen.coverage >= GOOD_COVERAGE_PERCENT && chosen.coverage <= 115;
+  const factor = shouldNormalize ? kpiRevenue / rawRevenue : 1;
+
+  const reconciled = buckets
+    .map((bucket) => {
+      const revenue = roundMoney(toNumber(bucket.revenue) * factor);
+      const grossRevenue = roundMoney(toNumber(bucket.grossRevenue, bucket.revenue) * factor);
+      const discountSum = roundMoney(toNumber(bucket.discountSum) * factor);
+
+      return {
+        ...bucket,
+        revenue,
+        grossRevenue,
+        discountSum
+      };
+    })
+    .filter((bucket) => toNumber(bucket.revenue) > 0)
+    .sort((a, b) => {
+      const byRevenue = toNumber(b.revenue) - toNumber(a.revenue);
+      if (byRevenue !== 0) return byRevenue;
+      return bucketPriority(a.key) - bucketPriority(b.key);
+    });
+
+  if (shouldNormalize && reconciled.length > 0) {
+    const sumAfter = rawTotal(reconciled);
+    const diff = roundMoney(kpiRevenue - sumAfter);
+
+    if (Math.abs(diff) >= 0.01) {
+      reconciled[0].revenue = roundMoney(reconciled[0].revenue + diff);
+      reconciled[0].grossRevenue = roundMoney(reconciled[0].grossRevenue + diff);
+    }
   }
 
-  if (
-    text.includes('ролл') ||
-    text.includes('маки') ||
-    text.includes('филадельф') ||
-    text.includes('канада') ||
-    text.includes('суш') ||
-    text.includes('сашими') ||
-    text.includes('салат') ||
-    text.includes('закуск') ||
-    text.includes('поке') ||
-    text.includes('десерт') ||
-    text.includes('сладк') ||
-    text.includes('манго') ||
-    text.includes('лосос') ||
-    text.includes('тунец') ||
-    text.includes('угор') ||
-    text.includes('угрем') ||
-    text.includes('кревет')
-  ) {
-    return 'cold';
-  }
-
-  if (
-    text.includes('модификатор') ||
-    text.includes('допы') ||
-    text.includes('васаби') ||
-    text.includes('имбир') ||
-    text.includes('соев') ||
-    text.includes('без категории') ||
-    text.includes('доставка')
-  ) {
-    return 'kitchen';
-  }
-
-  return 'other';
-}
-
-function buildProductionItem({ key, row, totalForShare }) {
-  const revenue = roundMoney(row.revenue);
-  const grossRevenue = roundMoney(row.grossRevenue || row.revenue);
-  const discountSum = roundMoney(row.discountSum || 0);
-  const checks = Math.round(toNumber(row.checks));
-  const guests = Math.round(toNumber(row.guests));
-  const sourceLabels = [...row.labels].filter(Boolean).slice(0, 4);
-  const sourceLabelsText = [...row.labels].filter(Boolean).slice(0, 20).join(' / ');
+  const allocatedRevenue = shouldNormalize ? kpiRevenue : rawTotal(reconciled);
+  const unallocatedRevenue = shouldNormalize ? 0 : Math.max(0, roundMoney(kpiRevenue - allocatedRevenue));
 
   return {
-    key,
-    name: PRODUCTION_NAMES[key] || 'Другое',
-    revenue,
-    revenueText: formatMoney(revenue),
-    grossRevenue,
-    discountSum,
-    checks,
-    guests,
-    share: totalForShare > 0 ? Math.round((revenue / totalForShare) * 1000) / 10 : 0,
-    sourceLabels: sourceLabels.map((label) => compactText(label)),
-    sourceLabelsText,
-    isUnallocated: false,
-    rowCount: row.rowCount || 0
+    buckets: reconciled,
+    normalizationFactor: factor,
+    allocatedRevenue,
+    unallocatedRevenue,
+    reconciliationMode: shouldNormalize ? 'normalized_to_kpi' : 'raw_detail_only',
+    coverageStatus: status
   };
 }
 
-function sortProductionItems(items) {
-  return [...items].sort((a, b) => {
-    const orderA = PRODUCTION_ORDER.indexOf(a.key);
-    const orderB = PRODUCTION_ORDER.indexOf(b.key);
-    const safeA = orderA === -1 ? 999 : orderA;
-    const safeB = orderB === -1 ? 999 : orderB;
+function decorateBuckets({ buckets, totalRevenue, kpi }) {
+  return safeArray(buckets).map((bucket) => {
+    const revenue = roundMoney(bucket.revenue);
+    const share = totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 1000) / 10 : 0;
+    const labels = unique(bucket.sourceLabels).slice(0, 4);
+    const labelsText = unique(bucket.sourceLabels).slice(0, 30).join(' / ');
 
-    if (a.revenue !== b.revenue) return b.revenue - a.revenue;
-    return safeA - safeB;
+    return {
+      key: bucket.key,
+      name: bucket.name,
+      revenue,
+      revenueText: formatMoney(revenue),
+      grossRevenue: roundMoney(bucket.grossRevenue),
+      discountSum: roundMoney(bucket.discountSum),
+      checks: Math.round(toNumber(bucket.checks)),
+      guests: Math.round(toNumber(bucket.guests)),
+      share,
+      sourceLabels: labels.map((label) => shortLabel(label)),
+      sourceLabelsText: labelsText,
+      isUnallocated: false,
+      rowCount: Math.round(toNumber(bucket.rowCount))
+    };
   });
 }
 
-function groupProductionRows(rows, totalForShare) {
-  const grouped = new Map();
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const key = String(
-      row?.production_key || mapProductionFromLabel(`${row?.production_name || ''} ${row?.source_label || ''}`)
-    );
-
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        revenue: 0,
-        grossRevenue: 0,
-        discountSum: 0,
-        checks: 0,
-        guests: 0,
-        labels: new Set(),
-        rowCount: 0
-      });
-    }
-
-    const bucket = grouped.get(key);
-
-    bucket.revenue += toNumber(row?.revenue);
-    bucket.grossRevenue += toNumber(row?.gross_revenue, toNumber(row?.revenue));
-    bucket.discountSum += toNumber(row?.discount_sum);
-    bucket.checks += toNumber(row?.checks_count);
-    bucket.guests += toNumber(row?.guests_count);
-    bucket.rowCount += 1;
-
-    if (row?.source_label) bucket.labels.add(row.source_label);
-    if (row?.production_name) bucket.labels.add(row.production_name);
+function makeNote({ chosen, reconciled, period }) {
+  if (chosen.source === EMPTY_SOURCE) {
+    return 'Данных по цехам за выбранный период нет. Главные KPI остаются из kpi_sales.';
   }
 
-  const items = [];
-
-  for (const [key, row] of grouped.entries()) {
-    if (roundMoney(row.revenue) <= 0 && key !== 'hookah') continue;
-    items.push(buildProductionItem({ key, row, totalForShare }));
+  if (reconciled.reconciliationMode === 'normalized_to_kpi') {
+    return 'Главная выручка, чеки, гости и средний чек взяты из KPI iiko. Цеха собраны из реальной детализации и сверены к KPI, чтобы суммы на экране не конфликтовали.';
   }
 
-  return sortProductionItems(items);
+  return `Цеха показаны только по доступной детализации за ${period}. Недостающую часть не показываем отдельной строкой и не размазываем по цехам.`;
 }
 
-function groupDishRows(rows, totalForShare) {
-  const grouped = new Map();
+async function handle(request) {
+  const url = new URL(request.url);
+  const restaurantId = normalizeRestaurantId(url.searchParams.get('restaurant_id'));
+  const requestedPeriod = String(url.searchParams.get('period') || 'day').trim().toLowerCase();
+  const period = ['day', 'week', 'month'].includes(requestedPeriod) ? requestedPeriod : 'day';
+  const date = url.searchParams.get('date') || '';
 
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const categoryName = String(row?.category_name || 'Без категории');
-    const dishName = String(row?.dish_name || 'Позиция');
-    const key = mapProductionFromLabel(`${categoryName} ${dishName}`);
+  const range = resolvePeriod({ period, date });
 
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        revenue: 0,
-        grossRevenue: 0,
-        discountSum: 0,
-        checks: 0,
-        guests: 0,
-        labels: new Set(),
-        rowCount: 0
-      });
-    }
+  const kpi = await getKpi({
+    restaurantId,
+    startDate: range.startDate,
+    endDate: range.endDate
+  });
 
-    const bucket = grouped.get(key);
-    const revenue = toNumber(row?.revenue);
+  const [productionRows, dishRows] = await Promise.all([
+    fetchProductionRows({
+      restaurantId,
+      startDate: range.startDate,
+      endDate: range.endDate
+    }),
+    fetchDishRows({
+      restaurantId,
+      startDate: range.startDate,
+      endDate: range.endDate
+    })
+  ]);
 
-    bucket.revenue += revenue;
-    bucket.grossRevenue += revenue;
-    bucket.rowCount += 1;
-    bucket.labels.add(`${categoryName} / ${dishName}`);
-  }
+  const productionBuckets = aggregateProductionRows(productionRows);
+  const dishBuckets = aggregateDishRows(dishRows);
 
-  const items = [];
+  const chosen = chooseSource({
+    kpiRevenue: kpi.revenue,
+    productionBuckets,
+    dishBuckets
+  });
 
-  for (const [key, row] of grouped.entries()) {
-    if (roundMoney(row.revenue) <= 0) continue;
-    items.push(buildProductionItem({ key, row, totalForShare }));
-  }
+  const reconciled = reconcileBuckets({
+    buckets: chosen.buckets,
+    kpi,
+    chosen
+  });
 
-  return sortProductionItems(items);
-}
+  const productionTypes = decorateBuckets({
+    buckets: reconciled.buckets,
+    totalRevenue: kpi.revenue || reconciled.allocatedRevenue,
+    kpi
+  });
 
-async function fetchProductionRows({ selectedRestaurantId, startDate, endDate }) {
-  const select = [
-    'business_date',
-    'restaurant_id',
-    'production_key',
-    'production_name',
-    'source_label',
-    'revenue',
-    'gross_revenue',
-    'discount_sum',
-    'checks_count',
-    'guests_count',
-    'updated_at'
-  ].join(',');
-
-  const path = `/rest/v1/production_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter(selectedRestaurantId)}&order=business_date.asc`;
-
-  return fetchAll(path);
-}
-
-async function fetchDishRows({ selectedRestaurantId, startDate, endDate }) {
-  const select = [
-    'business_date',
-    'restaurant_id',
-    'dish_name',
-    'category_name',
-    'quantity',
-    'revenue',
-    'cost',
-    'foodcost_percent',
-    'updated_at'
-  ].join(',');
-
-  const path = `/rest/v1/dish_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter(selectedRestaurantId)}&order=business_date.asc`;
-
-  return fetchAll(path);
-}
-
-function buildResponse({
-  selectedRestaurantId,
-  period,
-  startDate,
-  endDate,
-  kpi,
-  source,
-  productionTypes,
-  allocatedRevenue,
-  productionRowsCount,
-  dishRowsCount
-}) {
-  const totalRevenue = roundMoney(kpi.revenue || allocatedRevenue);
-  const safeAllocated = roundMoney(allocatedRevenue);
-  const missing = Math.max(0, roundMoney(totalRevenue - safeAllocated));
-  const coveragePercent = totalRevenue > 0
-    ? Math.min(100, Math.round((safeAllocated / totalRevenue) * 1000) / 10)
-    : 0;
-
-  const coverageStatus = totalRevenue === 0
-    ? 'empty'
-    : coveragePercent >= GOOD_COVERAGE_PERCENT
-      ? 'good'
-      : 'partial';
-
-  return NextResponse.json({
+  const response = {
     ok: true,
-    source,
-    selectedRestaurantId,
-    period,
-    startDate,
-    endDate,
+    source: chosen.source,
+    selectedRestaurantId: restaurantId,
+    period: range.period,
+    startDate: range.startDate,
+    endDate: range.endDate,
     hasProductionData: productionTypes.length > 0,
-
-    totalRevenue,
-    totalRevenueText: formatMoney(totalRevenue),
-    checks: kpi.checks || 0,
-    guests: kpi.guests || 0,
-    avgCheck: kpi.avgCheck || 0,
-
-    allocatedRevenue: safeAllocated,
-    allocatedRevenueText: formatMoney(safeAllocated),
-
-    unallocatedRevenue: missing,
-    unallocatedRevenueText: formatMoney(missing),
-    coveragePercent,
-    coverageStatus,
-    coverageText: coveragePercent > 0
-      ? `${coveragePercent}% распределено по цехам`
-      : 'нет детализации по цехам',
-
+    totalRevenue: roundMoney(kpi.revenue),
+    totalRevenueText: formatMoney(kpi.revenue),
+    checks: kpi.checks,
+    guests: kpi.guests,
+    avgCheck: kpi.avgCheck,
+    allocatedRevenue: roundMoney(reconciled.allocatedRevenue),
+    allocatedRevenueText: formatMoney(reconciled.allocatedRevenue),
+    unallocatedRevenue: 0,
+    unallocatedRevenueText: '0 ₽',
+    coveragePercent: chosen.coverage,
+    coverageStatus: reconciled.coverageStatus,
+    coverageText:
+      reconciled.reconciliationMode === 'normalized_to_kpi'
+        ? `${chosen.coverage}% детализации, сверено к KPI`
+        : `${chosen.coverage}% детализации`,
     hasUnallocated: false,
-
-    note: source === 'production_sales'
-      ? 'Цеха взяты из production_sales. Общая выручка сверяется с KPI iiko.'
-      : 'Цеха собраны из dish_sales по категориям блюд. Нераспределённую строку не показываем, чтобы не рисовать фейковые цеха.',
-
+    note: makeNote({ chosen, reconciled, period: range.period }),
     dataTruth: {
-      totalRevenueSource: kpi.source || 'kpi_sales',
-      productionSource: source,
-      rule: 'Выручка месяца/дня берётся из KPI iiko. Цеха берутся только из production_sales или dish_sales, без искусственного размазывания.'
+      totalRevenueSource: kpi.source,
+      productionSource: chosen.source,
+      rule:
+        reconciled.reconciliationMode === 'normalized_to_kpi'
+          ? 'Главные итоги берём из KPI. Цеха берём из детализации и нормализуем к KPI только при хорошем покрытии.'
+          : 'Главные итоги берём из KPI. Цеха берём только из доступной детализации, без отдельной строки Не распределено.'
     },
-
     debug: {
-      productionRowsCount,
-      dishRowsCount
+      kpiRevenue: roundMoney(kpi.revenue),
+      kpiChecks: kpi.checks,
+      kpiGuests: kpi.guests,
+      productionRowsCount: productionRows.length,
+      dishRowsCount: dishRows.length,
+      productionRawRevenue: rawTotal(productionBuckets),
+      dishRawRevenue: rawTotal(dishBuckets),
+      chosenRawRevenue: roundMoney(chosen.rawRevenue),
+      normalizationFactor: Math.round(reconciled.normalizationFactor * 1000000) / 1000000,
+      reconciliationMode: reconciled.reconciliationMode
     },
-
     productionTypes
-  });
+  };
+
+  return NextResponse.json(response);
 }
 
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-
-    const selectedRestaurantId = searchParams.get('restaurant_id') || DEFAULT_RESTAURANT_ID;
-    const period = searchParams.get('period') || 'day';
-    const selectedDate = searchParams.get('date');
-
-    const { startDate, endDate } = getRange(period, selectedDate);
-
-    const kpi = await fetchKpiTotal({
-      selectedRestaurantId,
-      startDate,
-      endDate
-    });
-
-    const totalRevenue = roundMoney(kpi.revenue);
-
-    const productionRows = await fetchProductionRows({
-      selectedRestaurantId,
-      startDate,
-      endDate
-    });
-
-    const productionRevenue = roundMoney(sumRows(productionRows, 'revenue'));
-    const productionCoverage = totalRevenue > 0 ? (productionRevenue / totalRevenue) * 100 : 0;
-
-    if (productionRows.length > 0 && productionRevenue > 0 && productionCoverage >= GOOD_COVERAGE_PERCENT) {
-      const productionTypes = groupProductionRows(productionRows, productionRevenue);
-
-      return buildResponse({
-        selectedRestaurantId,
-        period,
-        startDate,
-        endDate,
-        kpi,
-        source: 'production_sales',
-        productionTypes,
-        allocatedRevenue: productionRevenue,
-        productionRowsCount: productionRows.length,
-        dishRowsCount: 0
-      });
-    }
-
-    const dishRows = await fetchDishRows({
-      selectedRestaurantId,
-      startDate,
-      endDate
-    });
-
-    const dishRevenue = roundMoney(sumRows(dishRows, 'revenue'));
-
-    if (dishRows.length > 0 && dishRevenue > 0) {
-      const productionTypes = groupDishRows(dishRows, dishRevenue);
-
-      return buildResponse({
-        selectedRestaurantId,
-        period,
-        startDate,
-        endDate,
-        kpi,
-        source: 'dish_sales_category_mapping',
-        productionTypes,
-        allocatedRevenue: dishRevenue,
-        productionRowsCount: productionRows.length,
-        dishRowsCount: dishRows.length
-      });
-    }
-
-    const fallbackProductionTypes = groupProductionRows(
-      productionRows,
-      productionRevenue || totalRevenue
-    );
-
-    return buildResponse({
-      selectedRestaurantId,
-      period,
-      startDate,
-      endDate,
-      kpi,
-      source: productionRows.length ? 'production_sales_low_coverage' : 'no_production_data',
-      productionTypes: fallbackProductionTypes,
-      allocatedRevenue: productionRevenue,
-      productionRowsCount: productionRows.length,
-      dishRowsCount: dishRows.length
-    });
+    return await handle(request);
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message || 'production_sales_error'
+        error: error?.message || 'production_sales_failed'
       },
       { status: 500 }
     );
