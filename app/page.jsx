@@ -451,11 +451,12 @@ function HourlyAnalyticsBlock({ summary, compact = false }) {
 function ProductionTypesBlock({ productionTypes = [], loading = false }) {
   const rows = Array.isArray(productionTypes) ? productionTypes.filter((item) => Number(item?.revenue || 0) > 0) : [];
   const total = rows.reduce((sum, item) => sum + Number(item?.revenue || 0), 0);
+  const hasUnallocated = rows.some((item) => item?.key === 'unallocated' || item?.isUnallocated);
 
   if (loading && !rows.length) {
     return (
       <Section title="Откуда пришла выручка по типу производства" subtitle="реальные данные iiko, без расчёта по догадкам" className="production-panel">
-        <EmptyState title="Загружаем цеха" text="КЛИК проверяет production_sales и не подставляет выдуманные цифры." />
+        <EmptyState title="Загружаем цеха" text="КЛИК сверяет цеха с общей выручкой KPI и не подставляет выдуманные цифры." />
       </Section>
     );
   }
@@ -465,7 +466,7 @@ function ProductionTypesBlock({ productionTypes = [], loading = false }) {
   }
 
   return (
-    <Section title="Откуда пришла выручка по типу производства" subtitle="кухня, бар, кальян и цеха из iiko" className="production-panel">
+    <Section title="Откуда пришла выручка по типу производства" subtitle={hasUnallocated ? 'часть выручки показана как не распределённая, чтобы не врать по цехам' : 'кухня, бар, кальян и цеха из iiko'} className="production-panel">
       <div className="production-stack-bar" aria-label="Доля выручки по типу производства">
         {rows.slice(0, 8).map((item) => {
           const share = Number(item.share || (total ? (Number(item.revenue || 0) / total) * 100 : 0));
@@ -474,7 +475,7 @@ function ProductionTypesBlock({ productionTypes = [], loading = false }) {
       </div>
       <div className="production-list">
         {rows.slice(0, 8).map((item) => (
-          <div className="production-row" key={item.key || item.name}>
+          <div className={`production-row ${item?.isUnallocated || item?.key === 'unallocated' ? 'muted' : ''}`} key={item.key || item.name}>
             <div>
               <i />
               <b>{item.name}</b>
@@ -486,7 +487,7 @@ function ProductionTypesBlock({ productionTypes = [], loading = false }) {
           </div>
         ))}
       </div>
-      <p className="soft-text">Источник: таблица production_sales. Если данных нет, виджет скрывается и не рисует приблизительные цифры.</p>
+      <p className="soft-text">Источник: KPI iiko + production_sales/dish_sales. Если детализация неполная, КЛИК показывает “Не распределено”, а не размазывает выручку по цехам фейково.</p>
     </Section>
   );
 }
