@@ -123,6 +123,21 @@ async function checkIntegrations() {
   };
 }
 
+
+async function checkStopListReadiness() {
+  const rows = await getRows('/rest/v1/stop_list_items?select=*&order=updated_at.desc&limit=5');
+  return {
+    ok: true,
+    level: 'info',
+    status: rows.length ? 'ready' : 'postponed',
+    rows: rows.length,
+    latest: rows[0] || null,
+    note: rows.length
+      ? 'stop_list_items читается, есть реальные строки'
+      : 'таблица stop_list_items готова, но автоматический iikoCloud stop-list переносим до корректного apiLogin'
+  };
+}
+
 async function checkDashboardSettings() {
   const rows = await getRows('/rest/v1/business_dashboard_settings?select=id,business_id,restaurant_id,updated_by,updated_at,settings&order=updated_at.desc&limit=5');
   return {
@@ -162,7 +177,7 @@ export async function GET(request) {
     safeCheck('channel_sales', 'Каналы продаж', () => checkRecentRows('channel_sales', 'business_date')),
     safeCheck('hourly_sales', 'Почасовая аналитика', () => checkRecentRows('hourly_sales', 'business_date')),
     safeCheck('production_sales', 'Тип производства / цеха', () => checkRecentRows('production_sales', 'updated_at')),
-    safeCheck('stop_list_items', 'Стоп-лист', () => checkRecentRows('stop_list_items', 'updated_at')),
+    safeCheck('stop_list_items', 'Стоп-лист', checkStopListReadiness),
     safeCheck('dashboard_settings', 'Настройки дашборда', checkDashboardSettings)
   ]);
 
