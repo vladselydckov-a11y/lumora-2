@@ -1,9 +1,20 @@
 import { NextResponse } from 'next/server';
 import { supabaseFetch } from '../../../lib/supabaseServer';
-import { assertApiAccess } from '../../../lib/saasAccessGuard';
 
 const DEFAULT_RESTAURANT_ID = 'all';
-const RESTAURANT_IDS = ['aziatok', 'akvatoria'];
+const TYUMEN_TZ = 'Asia/Yekaterinburg';
+const KNOWN_RESTAURANTS = ['aziatok', 'akvatoria'];
+const GOOD_COVERAGE_PERCENT = 85;
+
+const PRODUCTION_ORDER = ['cold', 'hot', 'bar', 'hookah', 'kitchen', 'other'];
+const PRODUCTION_NAMES = {
+  cold: 'Холодный цех',
+  hot: 'Горячий цех',
+  bar: 'Бар',
+  hookah: 'Кальян',
+  kitchen: 'Кухня',
+  other: 'Другое'
+};
 
 function toNumber(value, fallback = 0) {
   const number = Number(value);
@@ -16,6 +27,12 @@ function roundMoney(value) {
 
 function formatMoney(value) {
   return `${Math.round(toNumber(value)).toLocaleString('ru-RU')} ₽`;
+}
+
+function compactText(value, maxLength = 90) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
 function dateToUTC(dateString) {
@@ -31,25 +48,24 @@ function addDays(dateString, days) {
 function weekStartMonday(dateString) {
   const date = dateToUTC(dateString);
   const day = date.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setUTCDate(date.getUTCDate() + diff);
+  const diff = day === 0 ? 6 : day - 1;
+  date.setUTCDate(date.getUTCDate() - diff);
   return date.toISOString().slice(0, 10);
 }
 
 function monthStart(dateString) {
-  return `${dateString.slice(0, 7)}-01`;
+  return `${dateString.slice(0, 8)}01`;
 }
 
 function monthEnd(dateString) {
   const year = Number(dateString.slice(0, 4));
   const month = Number(dateString.slice(5, 7));
-  const date = new Date(Date.UTC(year, month, 0));
-  return date.toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
 function getTyumenDate() {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Yekaterinburg',
+    timeZone: TYUMEN_TZ,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -83,86 +99,55 @@ function getRange(period, selectedDate) {
   };
 }
 
-async function fetchAll(path) {
-  const pageSize = 1000;
+function restaurantFilter(selectedRestaurantId, field = 'restaurant_id') {
+  if (!selectedRestaurantId || selectedRestaurantId === 'all') {
+    return `&${field}=in.(${KNOWN_RESTAURANTS.join(',')})`;
+  }
+
+  return `&${field}=eq.${encodeURIComponent(selectedRestaurantId)}`;
+}
+
+function kpiRestaurantFilter(selectedRestaurantId) {
+  if (!selectedRestaurantId || selectedRestaurantId === 'all') {
+    return '&restaurant_id=eq.all';
+  }
+
+  return `&restaurant_id=eq.${encodeURIComponent(selectedRestaurantId)}`;
+}
+
+async function fetchAll(path, pageSize = 1000) {
+  const result = [];
   let offset = 0;
-  const allRows = [];
 
   while (true) {
     const separator = path.includes('?') ? '&' : '?';
-    const pagedPath = `${path}${separator}limit=${pageSize}&offset=${offset}`;
+    const rows = await supabaseFetch(`${path}${separator}limit=${pageSize}&offset=${offset}`);
+    const list = Array.isArray(rows) ? rows : [];
 
-    const rows = await supabaseFetch(pagedPath);
+    result.push(...list);
 
-    if (!Array.isArray(rows)) {
-      return [];
-    }
-
-    allRows.push(...rows);
-
-    if (rows.length < pageSize) {
-      break;
-    }
+    if (list.length < pageSize) break;
 
     offset += pageSize;
 
-    if (offset > 100000) {
-      throw new Error('Supabase pagination safety stop in production-sales');
-    }
+    if (offset > 20000) break;
   }
 
-  return allRows;
+  return result;
 }
 
-function buildRestaurantFilter(selectedRestaurantId) {
-  if (!selectedRestaurantId || selectedRestaurantId === 'all') {
-    return {
-      kpiFilter: 'restaurant_id=eq.all',
-      detailFilter: `restaurant_id=in.(${RESTAURANT_IDS.join(',')})`
-    };
-  }
-
-  return {
-    kpiFilter: `restaurant_id=eq.${encodeURIComponent(selectedRestaurantId)}`,
-    detailFilter: `restaurant_id=eq.${encodeURIComponent(selectedRestaurantId)}`
-  };
+function sumRows(rows, field) {
+  return (Array.isArray(rows) ? rows : []).reduce((total, row) => {
+    return total + toNumber(row?.[field]);
+  }, 0);
 }
 
-async function fetchKpiRows({ selectedRestaurantId, startDate, endDate }) {
-  const { kpiFilter, detailFilter } = buildRestaurantFilter(selectedRestaurantId);
+function normalizeKpiRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
 
-  const baseSelect = 'select=restaurant_id,business_date,revenue,checks_count,guests_count';
-  const dateFilter = `business_date=gte.${startDate}&business_date=lte.${endDate}`;
-
-  const directRows = await fetchAll(
-    `/rest/v1/kpi_sales?${baseSelect}&${dateFilter}&${kpiFilter}&order=business_date.asc`
-  );
-
-  if (Array.isArray(directRows) && directRows.length > 0) {
-    return directRows;
-  }
-
-  if (selectedRestaurantId === 'all') {
-    return await fetchAll(
-      `/rest/v1/kpi_sales?${baseSelect}&${dateFilter}&${detailFilter}&order=business_date.asc`
-    );
-  }
-
-  return [];
-}
-
-async function fetchDishRows({ selectedRestaurantId, startDate, endDate }) {
-  const { detailFilter } = buildRestaurantFilter(selectedRestaurantId);
-
-  return await fetchAll(
-    `/rest/v1/dish_sales?select=restaurant_id,business_date,dish_name,category_name,quantity,revenue,cost,foodcost_percent&business_date=gte.${startDate}&business_date=lte.${endDate}&${detailFilter}&order=business_date.asc`
-  );
-}
-
-function summarizeKpi(rows) {
-  const revenue = roundMoney(rows.reduce((sum, row) => sum + toNumber(row.revenue), 0));
-  const checks = Math.round(rows.reduce((sum, row) => sum + toNumber(row.checks_count), 0));
-  const guests = Math.round(rows.reduce((sum, row) => sum + toNumber(row.guests_count), 0));
+  const revenue = roundMoney(sumRows(list, 'revenue'));
+  const checks = Math.round(sumRows(list, 'checks_count') || sumRows(list, 'checks'));
+  const guests = Math.round(sumRows(list, 'guests_count') || sumRows(list, 'guests'));
   const avgCheck = checks > 0 ? Math.round(revenue / checks) : 0;
 
   return {
@@ -173,47 +158,59 @@ function summarizeKpi(rows) {
   };
 }
 
-function normalizeText(value) {
-  return String(value || '').trim().toLowerCase();
-}
+async function fetchKpiTotal({ selectedRestaurantId, startDate, endDate }) {
+  const select = 'business_date,restaurant_id,revenue,checks_count,guests_count,avg_check';
 
-function classifyProduction(row) {
-  const category = normalizeText(row.category_name);
-  const dish = normalizeText(row.dish_name);
-  const text = `${category} ${dish}`;
+  const directPath = `/rest/v1/kpi_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${kpiRestaurantFilter(selectedRestaurantId)}`;
+  const directRows = await fetchAll(directPath);
+  const direct = normalizeKpiRows(directRows);
 
-  if (
-    text.includes('кальян') ||
-    text.includes('hookah')
-  ) {
+  if (direct.revenue > 0 || selectedRestaurantId !== 'all') {
     return {
-      key: 'hookah',
-      name: 'Кальян'
+      ...direct,
+      source: 'kpi_sales'
     };
   }
 
+  const fallbackPath = `/rest/v1/kpi_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter('all')}`;
+  const fallbackRows = await fetchAll(fallbackPath);
+  const fallback = normalizeKpiRows(fallbackRows);
+
+  return {
+    ...fallback,
+    source: 'kpi_sales_restaurants_sum'
+  };
+}
+
+function mapProductionFromLabel(value = '') {
+  const text = String(value || '').toLowerCase();
+
+  if (text.includes('кальян')) return 'hookah';
+
   if (
-    text.includes('бар') ||
-    text.includes('б/а') ||
+    text.includes('бар б/а') ||
+    text.includes('склад бар') ||
     text.includes('алкоголь') ||
-    text.includes('вино') ||
-    text.includes('пиво') ||
-    text.includes('сидр') ||
-    text.includes('коктейл') ||
+    text.includes('коктей') ||
+    text.includes('напит') ||
     text.includes('лимонад') ||
+    text.includes('вода') ||
     text.includes('морс') ||
+    text.includes('сок') ||
+    text.includes('сидр') ||
+    text.includes('пиво') ||
+    text.includes('вино') ||
     text.includes('чай') ||
     text.includes('кофе') ||
-    text.includes('капучино') ||
     text.includes('американо') ||
+    text.includes('капучино') ||
     text.includes('латте') ||
-    text.includes('вода') ||
-    text.includes('напит')
+    text.includes('бабл') ||
+    text.includes('байкал') ||
+    text.includes('сакура') ||
+    text.includes('lapochka')
   ) {
-    return {
-      key: 'bar',
-      name: 'Бар'
-    };
+    return 'bar';
   }
 
   if (
@@ -223,16 +220,16 @@ function classifyProduction(row) {
     text.includes('том ям') ||
     text.includes('фобо') ||
     text.includes('удон') ||
-    text.includes('рис') ||
     text.includes('тяхан') ||
+    text.includes('рис') ||
     text.includes('лапша') ||
+    text.includes('вок') ||
+    text.includes('кацу') ||
     text.includes('темпур') ||
-    text.includes('запеч')
+    text.includes('запечен') ||
+    text.includes('запечён')
   ) {
-    return {
-      key: 'hot',
-      name: 'Горячий цех'
-    };
+    return 'hot';
   }
 
   if (
@@ -240,180 +237,270 @@ function classifyProduction(row) {
     text.includes('маки') ||
     text.includes('филадельф') ||
     text.includes('канада') ||
+    text.includes('суш') ||
+    text.includes('сашими') ||
     text.includes('салат') ||
     text.includes('закуск') ||
     text.includes('поке') ||
     text.includes('десерт') ||
-    text.includes('сладк')
+    text.includes('сладк') ||
+    text.includes('манго') ||
+    text.includes('лосос') ||
+    text.includes('тунец') ||
+    text.includes('угор') ||
+    text.includes('угрем') ||
+    text.includes('кревет')
   ) {
-    return {
-      key: 'cold',
-      name: 'Холодный цех'
-    };
+    return 'cold';
   }
 
   if (
     text.includes('модификатор') ||
+    text.includes('допы') ||
     text.includes('васаби') ||
     text.includes('имбир') ||
     text.includes('соев') ||
-    text.includes('соус') ||
-    text.includes('огурцом')
+    text.includes('без категории') ||
+    text.includes('доставка')
   ) {
-    return {
-      key: 'kitchen',
-      name: 'Кухня'
-    };
+    return 'kitchen';
   }
 
+  return 'other';
+}
+
+function buildProductionItem({ key, row, totalForShare }) {
+  const revenue = roundMoney(row.revenue);
+  const grossRevenue = roundMoney(row.grossRevenue || row.revenue);
+  const discountSum = roundMoney(row.discountSum || 0);
+  const checks = Math.round(toNumber(row.checks));
+  const guests = Math.round(toNumber(row.guests));
+  const sourceLabels = [...row.labels].filter(Boolean).slice(0, 4);
+  const sourceLabelsText = [...row.labels].filter(Boolean).slice(0, 20).join(' / ');
+
   return {
-    key: 'other',
-    name: 'Другое'
+    key,
+    name: PRODUCTION_NAMES[key] || 'Другое',
+    revenue,
+    revenueText: formatMoney(revenue),
+    grossRevenue,
+    discountSum,
+    checks,
+    guests,
+    share: totalForShare > 0 ? Math.round((revenue / totalForShare) * 1000) / 10 : 0,
+    sourceLabels: sourceLabels.map((label) => compactText(label)),
+    sourceLabelsText,
+    isUnallocated: false,
+    rowCount: row.rowCount || 0
   };
 }
 
-function compactLabels(labels, limit = 4) {
-  return labels
-    .filter(Boolean)
-    .slice(0, limit);
+function sortProductionItems(items) {
+  return [...items].sort((a, b) => {
+    const orderA = PRODUCTION_ORDER.indexOf(a.key);
+    const orderB = PRODUCTION_ORDER.indexOf(b.key);
+    const safeA = orderA === -1 ? 999 : orderA;
+    const safeB = orderB === -1 ? 999 : orderB;
+
+    if (a.revenue !== b.revenue) return b.revenue - a.revenue;
+    return safeA - safeB;
+  });
 }
 
-function buildSourceLabel(row) {
-  const category = String(row.category_name || 'Без категории').trim();
-  const dish = String(row.dish_name || 'Без названия').trim();
+function groupProductionRows(rows, totalForShare) {
+  const grouped = new Map();
 
-  if (category && dish && category !== dish) {
-    return `${category} / ${dish}`;
-  }
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(
+      row?.production_key || mapProductionFromLabel(`${row?.production_name || ''} ${row?.source_label || ''}`)
+    );
 
-  return dish || category || 'Без названия';
-}
-
-function buildProductionTypes({ dishRows, kpi }) {
-  const groups = new Map();
-
-  for (const row of dishRows) {
-    const revenue = roundMoney(row.revenue);
-    if (Math.abs(revenue) < 0.01) continue;
-
-    const production = classifyProduction(row);
-    const key = production.key;
-
-    if (!groups.has(key)) {
-      groups.set(key, {
-        key,
-        name: production.name,
+    if (!grouped.has(key)) {
+      grouped.set(key, {
         revenue: 0,
         grossRevenue: 0,
         discountSum: 0,
         checks: 0,
         guests: 0,
-        rowCount: 0,
-        sourceLabels: new Set()
+        labels: new Set(),
+        rowCount: 0
       });
     }
 
-    const group = groups.get(key);
-    group.revenue = roundMoney(group.revenue + revenue);
-    group.grossRevenue = roundMoney(group.grossRevenue + revenue);
-    group.rowCount += 1;
+    const bucket = grouped.get(key);
 
-    const label = buildSourceLabel(row);
-    if (group.sourceLabels.size < 20) {
-      group.sourceLabels.add(label);
-    }
+    bucket.revenue += toNumber(row?.revenue);
+    bucket.grossRevenue += toNumber(row?.gross_revenue, toNumber(row?.revenue));
+    bucket.discountSum += toNumber(row?.discount_sum);
+    bucket.checks += toNumber(row?.checks_count);
+    bucket.guests += toNumber(row?.guests_count);
+    bucket.rowCount += 1;
+
+    if (row?.source_label) bucket.labels.add(row.source_label);
+    if (row?.production_name) bucket.labels.add(row.production_name);
   }
 
-  const allocatedRevenue = roundMoney([...groups.values()].reduce((sum, item) => sum + item.revenue, 0));
-  const unallocatedRevenue = roundMoney(Math.max(0, kpi.revenue - allocatedRevenue));
+  const items = [];
 
-  const productionTypes = [...groups.values()]
-    .map((item) => {
-      const labels = [...item.sourceLabels];
-
-      return {
-        key: item.key,
-        name: item.name,
-        revenue: roundMoney(item.revenue),
-        revenueText: formatMoney(item.revenue),
-        grossRevenue: roundMoney(item.grossRevenue),
-        discountSum: roundMoney(item.discountSum),
-        checks: item.checks,
-        guests: item.guests,
-        share: kpi.revenue > 0 ? Math.round((item.revenue / kpi.revenue) * 1000) / 10 : 0,
-        sourceLabels: compactLabels(labels),
-        sourceLabelsText: labels.slice(0, 12).join(' / '),
-        isUnallocated: false,
-        rowCount: item.rowCount
-      };
-    })
-    .sort((a, b) => b.revenue - a.revenue);
-
-  if (unallocatedRevenue > 1) {
-    productionTypes.unshift({
-      key: 'unallocated',
-      name: 'Не распределено',
-      revenue: unallocatedRevenue,
-      revenueText: formatMoney(unallocatedRevenue),
-      grossRevenue: unallocatedRevenue,
-      discountSum: 0,
-      checks: kpi.checks,
-      guests: kpi.guests,
-      share: kpi.revenue > 0 ? Math.round((unallocatedRevenue / kpi.revenue) * 1000) / 10 : 0,
-      sourceLabels: ['Есть в общей выручке KPI iiko, но нет полной детализации в dish_sales'],
-      sourceLabelsText: 'Есть в общей выручке KPI iiko, но нет полной детализации в dish_sales',
-      isUnallocated: true,
-      rowCount: 1
-    });
+  for (const [key, row] of grouped.entries()) {
+    if (roundMoney(row.revenue) <= 0 && key !== 'hookah') continue;
+    items.push(buildProductionItem({ key, row, totalForShare }));
   }
 
-  const coveragePercent = kpi.revenue > 0
-    ? Math.round((Math.min(allocatedRevenue, kpi.revenue) / kpi.revenue) * 1000) / 10
-    : 0;
-
-  const coverageStatus =
-    coveragePercent >= 99 ? 'good' :
-    coveragePercent >= 90 ? 'attention' :
-    'bad';
-
-  return {
-    productionTypes,
-    allocatedRevenue,
-    unallocatedRevenue,
-    coveragePercent,
-    coverageStatus
-  };
+  return sortProductionItems(items);
 }
 
-function buildNoDataResponse({ selectedRestaurantId, period, startDate, endDate }) {
-  return {
+function groupDishRows(rows, totalForShare) {
+  const grouped = new Map();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const categoryName = String(row?.category_name || 'Без категории');
+    const dishName = String(row?.dish_name || 'Позиция');
+    const key = mapProductionFromLabel(`${categoryName} ${dishName}`);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        revenue: 0,
+        grossRevenue: 0,
+        discountSum: 0,
+        checks: 0,
+        guests: 0,
+        labels: new Set(),
+        rowCount: 0
+      });
+    }
+
+    const bucket = grouped.get(key);
+    const revenue = toNumber(row?.revenue);
+
+    bucket.revenue += revenue;
+    bucket.grossRevenue += revenue;
+    bucket.rowCount += 1;
+    bucket.labels.add(`${categoryName} / ${dishName}`);
+  }
+
+  const items = [];
+
+  for (const [key, row] of grouped.entries()) {
+    if (roundMoney(row.revenue) <= 0) continue;
+    items.push(buildProductionItem({ key, row, totalForShare }));
+  }
+
+  return sortProductionItems(items);
+}
+
+async function fetchProductionRows({ selectedRestaurantId, startDate, endDate }) {
+  const select = [
+    'business_date',
+    'restaurant_id',
+    'production_key',
+    'production_name',
+    'source_label',
+    'revenue',
+    'gross_revenue',
+    'discount_sum',
+    'checks_count',
+    'guests_count',
+    'updated_at'
+  ].join(',');
+
+  const path = `/rest/v1/production_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter(selectedRestaurantId)}&order=business_date.asc`;
+
+  return fetchAll(path);
+}
+
+async function fetchDishRows({ selectedRestaurantId, startDate, endDate }) {
+  const select = [
+    'business_date',
+    'restaurant_id',
+    'dish_name',
+    'category_name',
+    'quantity',
+    'revenue',
+    'cost',
+    'foodcost_percent',
+    'updated_at'
+  ].join(',');
+
+  const path = `/rest/v1/dish_sales?select=${select}&business_date=gte.${startDate}&business_date=lte.${endDate}${restaurantFilter(selectedRestaurantId)}&order=business_date.asc`;
+
+  return fetchAll(path);
+}
+
+function buildResponse({
+  selectedRestaurantId,
+  period,
+  startDate,
+  endDate,
+  kpi,
+  source,
+  productionTypes,
+  allocatedRevenue,
+  productionRowsCount,
+  dishRowsCount
+}) {
+  const totalRevenue = roundMoney(kpi.revenue || allocatedRevenue);
+  const safeAllocated = roundMoney(allocatedRevenue);
+  const missing = Math.max(0, roundMoney(totalRevenue - safeAllocated));
+  const coveragePercent = totalRevenue > 0
+    ? Math.min(100, Math.round((safeAllocated / totalRevenue) * 1000) / 10)
+    : 0;
+
+  const coverageStatus = totalRevenue === 0
+    ? 'empty'
+    : coveragePercent >= GOOD_COVERAGE_PERCENT
+      ? 'good'
+      : 'partial';
+
+  return NextResponse.json({
     ok: true,
-    source: 'production_sales',
+    source,
     selectedRestaurantId,
     period,
     startDate,
     endDate,
-    hasProductionData: false,
-    totalRevenue: 0,
-    totalRevenueText: '0 ₽',
-    checks: 0,
-    guests: 0,
-    avgCheck: 0,
-    productionTypes: [],
-    note: 'За выбранный период данных по KPI/цехам пока нет.'
-  };
+    hasProductionData: productionTypes.length > 0,
+
+    totalRevenue,
+    totalRevenueText: formatMoney(totalRevenue),
+    checks: kpi.checks || 0,
+    guests: kpi.guests || 0,
+    avgCheck: kpi.avgCheck || 0,
+
+    allocatedRevenue: safeAllocated,
+    allocatedRevenueText: formatMoney(safeAllocated),
+
+    unallocatedRevenue: missing,
+    unallocatedRevenueText: formatMoney(missing),
+    coveragePercent,
+    coverageStatus,
+    coverageText: coveragePercent > 0
+      ? `${coveragePercent}% распределено по цехам`
+      : 'нет детализации по цехам',
+
+    hasUnallocated: false,
+
+    note: source === 'production_sales'
+      ? 'Цеха взяты из production_sales. Общая выручка сверяется с KPI iiko.'
+      : 'Цеха собраны из dish_sales по категориям блюд. Нераспределённую строку не показываем, чтобы не рисовать фейковые цеха.',
+
+    dataTruth: {
+      totalRevenueSource: kpi.source || 'kpi_sales',
+      productionSource: source,
+      rule: 'Выручка месяца/дня берётся из KPI iiko. Цеха берутся только из production_sales или dish_sales, без искусственного размазывания.'
+    },
+
+    debug: {
+      productionRowsCount,
+      dishRowsCount
+    },
+
+    productionTypes
+  });
 }
 
 export async function GET(request) {
   try {
-    const gate = assertApiAccess(request);
-    if (!gate.ok) {
-      return NextResponse.json(
-        { ok: false, error: gate.error || 'access_denied' },
-        { status: gate.status || 401 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
 
     const selectedRestaurantId = searchParams.get('restaurant_id') || DEFAULT_RESTAURANT_ID;
@@ -422,63 +509,86 @@ export async function GET(request) {
 
     const { startDate, endDate } = getRange(period, selectedDate);
 
-    const [kpiRows, dishRows] = await Promise.all([
-      fetchKpiRows({ selectedRestaurantId, startDate, endDate }),
-      fetchDishRows({ selectedRestaurantId, startDate, endDate })
-    ]);
+    const kpi = await fetchKpiTotal({
+      selectedRestaurantId,
+      startDate,
+      endDate
+    });
 
-    const kpi = summarizeKpi(kpiRows);
+    const totalRevenue = roundMoney(kpi.revenue);
 
-    if (!kpiRows.length && !dishRows.length) {
-      return NextResponse.json(
-        buildNoDataResponse({ selectedRestaurantId, period, startDate, endDate })
-      );
+    const productionRows = await fetchProductionRows({
+      selectedRestaurantId,
+      startDate,
+      endDate
+    });
+
+    const productionRevenue = roundMoney(sumRows(productionRows, 'revenue'));
+    const productionCoverage = totalRevenue > 0 ? (productionRevenue / totalRevenue) * 100 : 0;
+
+    if (productionRows.length > 0 && productionRevenue > 0 && productionCoverage >= GOOD_COVERAGE_PERCENT) {
+      const productionTypes = groupProductionRows(productionRows, productionRevenue);
+
+      return buildResponse({
+        selectedRestaurantId,
+        period,
+        startDate,
+        endDate,
+        kpi,
+        source: 'production_sales',
+        productionTypes,
+        allocatedRevenue: productionRevenue,
+        productionRowsCount: productionRows.length,
+        dishRowsCount: 0
+      });
     }
 
-    const {
-      productionTypes,
-      allocatedRevenue,
-      unallocatedRevenue,
-      coveragePercent,
-      coverageStatus
-    } = buildProductionTypes({ dishRows, kpi });
+    const dishRows = await fetchDishRows({
+      selectedRestaurantId,
+      startDate,
+      endDate
+    });
 
-    return NextResponse.json({
-      ok: true,
-      source: 'dish_sales_category_mapping',
+    const dishRevenue = roundMoney(sumRows(dishRows, 'revenue'));
+
+    if (dishRows.length > 0 && dishRevenue > 0) {
+      const productionTypes = groupDishRows(dishRows, dishRevenue);
+
+      return buildResponse({
+        selectedRestaurantId,
+        period,
+        startDate,
+        endDate,
+        kpi,
+        source: 'dish_sales_category_mapping',
+        productionTypes,
+        allocatedRevenue: dishRevenue,
+        productionRowsCount: productionRows.length,
+        dishRowsCount: dishRows.length
+      });
+    }
+
+    const fallbackProductionTypes = groupProductionRows(
+      productionRows,
+      productionRevenue || totalRevenue
+    );
+
+    return buildResponse({
       selectedRestaurantId,
       period,
       startDate,
       endDate,
-      hasProductionData: productionTypes.length > 0,
-      totalRevenue: kpi.revenue,
-      totalRevenueText: formatMoney(kpi.revenue),
-      checks: kpi.checks,
-      guests: kpi.guests,
-      avgCheck: kpi.avgCheck,
-      allocatedRevenue,
-      allocatedRevenueText: formatMoney(allocatedRevenue),
-      unallocatedRevenue,
-      unallocatedRevenueText: formatMoney(unallocatedRevenue),
-      coveragePercent,
-      coverageStatus,
-      coverageText: `${coveragePercent}% распределено по цехам`,
-      hasUnallocated: unallocatedRevenue > 1,
-      note: unallocatedRevenue > 1
-        ? 'Общая выручка взята из KPI iiko. Нераспределённая часть показана отдельно, потому что в dish_sales нет полной детализации за часть периода.'
-        : 'Цеха покрывают выручку периода. Остаток не распределённой выручки не найден.',
-      dataTruth: {
-        totalRevenueSource: 'kpi_sales',
-        productionSource: 'dish_sales_category_mapping',
-        rule: 'Не подставляем приблизительные цеха. Если детализация неполная, остаток идёт в Не распределено.'
-      },
-      productionTypes
+      kpi,
+      source: productionRows.length ? 'production_sales_low_coverage' : 'no_production_data',
+      productionTypes: fallbackProductionTypes,
+      allocatedRevenue: productionRevenue,
+      productionRowsCount: productionRows.length,
+      dishRowsCount: dishRows.length
     });
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
-        source: 'production_sales',
         error: error?.message || 'production_sales_error'
       },
       { status: 500 }
