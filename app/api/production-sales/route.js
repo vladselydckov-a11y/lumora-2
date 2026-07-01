@@ -114,7 +114,8 @@ function aggregateProductionRows(rows) {
       checks: Math.round(item.checks),
       guests: Math.round(item.guests),
       share: totalRevenue > 0 ? Math.round((item.revenue / totalRevenue) * 1000) / 10 : 0,
-      sourceLabels: [...item.sourceLabels].slice(0, 6)
+      sourceLabels: [...item.sourceLabels].slice(0, 4).map((label) => String(label).length > 90 ? `${String(label).slice(0, 87)}...` : String(label)),
+      sourceLabelsText: [...item.sourceLabels].slice(0, 3).join(' / ')
     }));
 }
 
